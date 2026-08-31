@@ -57,6 +57,7 @@ namespace Homepad.UI
         [SerializeField] private Text logText;
         [SerializeField] private ScrollRect logScrollRect;
         [SerializeField] private Button clearLogButton;
+        private InputField logField;
 
         [Header("Font & Appearance")]
         [SerializeField] private Font customFont;
@@ -119,6 +120,11 @@ namespace Homepad.UI
         {
             if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
             HandleUiPointerClick(Mouse.current.position.ReadValue());
+        }
+
+        private void LateUpdate()
+        {
+            CopyLogSelectionIfRequested();
         }
 
         private void HookConnector()
@@ -195,6 +201,7 @@ namespace Homepad.UI
             if (logText == null) logText = FindUi<Text>("Log");
             if (logScrollRect == null) logScrollRect = FindUi<ScrollRect>("LogScrollView");
             if (clearLogButton == null) clearLogButton = FindUi<Button>("ClearLog");
+            if (logField == null && logText != null) logField = logText.GetComponent<InputField>();
 
             if (connectButton == null || refreshButton == null || logText == null)
             {
@@ -206,7 +213,7 @@ namespace Homepad.UI
         {
             if (logText == null) return;
 
-            logText.raycastTarget = false;
+            logText.raycastTarget = true;
             logText.supportRichText = true;
             logText.horizontalOverflow = HorizontalWrapMode.Wrap;
             logText.verticalOverflow = VerticalWrapMode.Overflow;
@@ -223,6 +230,31 @@ namespace Homepad.UI
             {
                 logScrollRect.viewport = logScrollRect.GetComponent<RectTransform>();
             }
+
+            EnsureLogSelectable();
+        }
+
+        private void EnsureLogSelectable()
+        {
+            if (logText == null) return;
+
+            var hit = logText.GetComponent<Image>();
+            if (hit == null) hit = logText.gameObject.AddComponent<Image>();
+            hit.color = new Color(1f, 1f, 1f, 0f);
+            hit.raycastTarget = true;
+
+            logField = logText.GetComponent<InputField>();
+            if (logField == null) logField = logText.gameObject.AddComponent<InputField>();
+            logField.textComponent = logText;
+            logField.targetGraphic = hit;
+            logField.lineType = InputField.LineType.MultiLineNewline;
+            logField.readOnly = true;
+            logField.shouldHideMobileInput = true;
+            logField.customCaretColor = true;
+            logField.caretColor = new Color(0.75f, 0.82f, 0.9f, 1f);
+            logField.selectionColor = new Color(0.28f, 0.48f, 0.72f, 0.45f);
+            logField.characterLimit = 0;
+            logField.transition = Selectable.Transition.None;
         }
 
         private IEnumerator WatchUsbRoutine()
@@ -317,6 +349,11 @@ namespace Homepad.UI
             Button button = null;
             for (int i = 0; i < raycastHits.Count; i++)
             {
+                if (logField != null && raycastHits[i].gameObject.GetComponentInParent<InputField>() == logField)
+                {
+                    return;
+                }
+
                 button = raycastHits[i].gameObject.GetComponentInParent<Button>();
                 if (button != null && button.interactable) break;
                 button = null;
@@ -539,7 +576,8 @@ namespace Homepad.UI
         {
             logBuilder.Clear();
             logLineCount = 0;
-            if (logText != null) logText.text = string.Empty;
+            if (logField != null) logField.text = string.Empty;
+            else if (logText != null) logText.text = string.Empty;
         }
 
         private void AppendLog(string message, bool isTx)
@@ -565,7 +603,9 @@ namespace Homepad.UI
             if (logText != null)
             {
                 logText.verticalOverflow = VerticalWrapMode.Overflow;
-                logText.text = logBuilder.ToString();
+                string visible = StripRichText(logBuilder.ToString());
+                if (logField != null) logField.text = visible;
+                else logText.text = visible;
                 float height = Mathf.Max(logText.preferredHeight + 24f, 80f);
                 logText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
                 var content = logText.transform.parent as RectTransform;
@@ -656,6 +696,52 @@ namespace Homepad.UI
             {
                 statusDot.color = isConnected ? MutedGreen : MutedRed;
             }
+        }
+
+        private void CopyLogSelectionIfRequested()
+        {
+            if (logField == null || !logField.isFocused) return;
+            var kb = Keyboard.current;
+            if (kb == null) return;
+
+            bool copyChord = kb.cKey.wasPressedThisFrame && (
+                kb.leftCommandKey.isPressed || kb.rightCommandKey.isPressed ||
+                kb.leftCtrlKey.isPressed || kb.rightCtrlKey.isPressed);
+            if (!copyChord) return;
+
+            string raw = logField.text ?? string.Empty;
+            int a = Mathf.Min(logField.selectionAnchorPosition, logField.caretPosition);
+            int b = Mathf.Max(logField.selectionAnchorPosition, logField.caretPosition);
+            a = Mathf.Clamp(a, 0, raw.Length);
+            b = Mathf.Clamp(b, 0, raw.Length);
+            string selected = b > a ? raw.Substring(a, b - a) : raw;
+            GUIUtility.systemCopyBuffer = StripRichText(selected);
+        }
+
+        private static string StripRichText(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            var sb = new StringBuilder(s.Length);
+            bool inTag = false;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == '<')
+                {
+                    inTag = true;
+                    continue;
+                }
+
+                if (c == '>' && inTag)
+                {
+                    inTag = false;
+                    continue;
+                }
+
+                if (!inTag) sb.Append(c);
+            }
+
+            return sb.ToString();
         }
 
         private void Bind(Button button, UnityEngine.Events.UnityAction action)
