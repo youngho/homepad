@@ -39,13 +39,33 @@ namespace Homepad.Core
             }
         }
 
+        private void OnDestroy()
+        {
+            if (instance == this)
+            {
+                instance = null;
+                lock (executionQueue)
+                {
+                    executionQueue.Clear();
+                }
+            }
+        }
+
         private void Update()
         {
             lock (executionQueue)
             {
                 while (executionQueue.Count > 0)
                 {
-                    executionQueue.Dequeue()?.Invoke();
+                    var action = executionQueue.Dequeue();
+                    try
+                    {
+                        action?.Invoke();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogException(ex);
+                    }
                 }
             }
         }

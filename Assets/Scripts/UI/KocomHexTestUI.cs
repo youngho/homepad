@@ -1,8 +1,11 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using Homepad.Core;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -60,10 +63,19 @@ namespace Homepad.UI
         private const int MaxLogLines = 120;
         private HexCategory currentCategory = HexCategory.All;
         private Font uiFont;
+        private ArduinoConnector connector;
+        private string[] lastSeenPorts = new string[0];
+        private readonly List<RaycastResult> raycastHits = new List<RaycastResult>();
+        private int handledClickFrame = -1;
+        private bool autoConnectAttempted;
 
         private void Awake()
         {
             AutoResolveUiReferences();
+            BindEvents();
+            HookConnector();
+            EnsureLogLayout();
+            UiInputBootstrap.GiveMouseToUi();
         }
 
         private void Start()
@@ -74,34 +86,49 @@ namespace Homepad.UI
                     ? statusText.font
                     : (Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf"));
 
-            BindEvents();
-
-            var connector = GetConnector();
-            if (connector != null)
-            {
-                connector.OnConnectionStatusChanged += UpdateStatus;
-                connector.OnLogMessage += AppendLog;
-                connector.OnPacketReceived += OnPacketReceived;
-                UpdateStatus(connector.IsConnected);
-            }
-
             if (customHexInput != null && string.IsNullOrEmpty(customHexInput.text))
             {
                 customHexInput.text = "AA 55 30 BC 00 0E 00 01 00 00 FF 00 00 00 00 00 00 00 FA 0D 0D";
             }
 
+            var header = FindUi<Text>("LogHeader");
+            if (header != null) header.text = "시리얼 로그 (USB · 송수신)";
+
             RefreshPorts(true);
+            lastSeenPorts = ports ?? new string[0];
             PopulatePresetList(HexCategory.All);
+            UiInputBootstrap.GiveMouseToUi();
 
             if (ports.Length > 0)
             {
-                OnConnectClicked();
+                TryAutoConnect();
             }
+
+            StartCoroutine(WatchUsbRoutine());
+        }
+
+        private void Update()
+        {
+            if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
+            HandleUiPointerClick(Mouse.current.position.ReadValue());
+        }
+
+        private void HookConnector()
+        {
+            var serial = GetConnector();
+            if (serial == null) return;
+
+            serial.OnConnectionStatusChanged -= UpdateStatus;
+            serial.OnLogMessage -= AppendLog;
+            serial.OnPacketReceived -= OnPacketReceived;
+            serial.OnConnectionStatusChanged += UpdateStatus;
+            serial.OnLogMessage += AppendLog;
+            serial.OnPacketReceived += OnPacketReceived;
+            UpdateStatus(serial.IsConnected);
         }
 
         private void OnDestroy()
         {
-            var connector = GetConnector();
             if (connector == null) return;
             connector.OnConnectionStatusChanged -= UpdateStatus;
             connector.OnLogMessage -= AppendLog;
@@ -110,11 +137,21 @@ namespace Homepad.UI
 
         private ArduinoConnector GetConnector()
         {
+            if (connector != null) return connector;
+
             if (WallpadManager.Instance != null && WallpadManager.Instance.Connector != null)
             {
-                return WallpadManager.Instance.Connector;
+                connector = WallpadManager.Instance.Connector;
+                return connector;
             }
-            return FindObjectOfType<ArduinoConnector>();
+
+            connector = FindFirstObjectByType<ArduinoConnector>();
+            if (connector != null) return connector;
+
+            var go = new GameObject("ArduinoSerial");
+            connector = go.AddComponent<ArduinoConnector>();
+            AppendLog("[시스템] 씬에 ArduinoConnector가 없어 시리얼 브리지를 생성했습니다.", false);
+            return connector;
         }
 
         private void AutoResolveUiReferences()
@@ -150,6 +187,135 @@ namespace Homepad.UI
             if (logText == null) logText = FindUi<Text>("Log");
             if (logScrollRect == null) logScrollRect = FindUi<ScrollRect>("LogScrollView");
             if (clearLogButton == null) clearLogButton = FindUi<Button>("ClearLog");
+
+            if (connectButton == null || refreshButton == null || logText == null)
+            {
+                Debug.LogError("[KocomHexTestUI] UI 참조를 찾지 못했습니다. Connect/Refresh/Log를 확인하세요.");
+            }
+        }
+
+        private void EnsureLogLayout()
+        {
+            if (logText == null) return;
+
+            logText.raycastTarget = false;
+            logText.supportRichText = true;
+            logText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            logText.verticalOverflow = VerticalWrapMode.Overflow;
+            logText.alignment = TextAnchor.UpperLeft;
+
+            var rt = logText.rectTransform;
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.offsetMin = new Vector2(12f, rt.offsetMin.y);
+            rt.offsetMax = new Vector2(-12f, -8f);
+
+            if (logScrollRect != null && logScrollRect.viewport == null)
+            {
+                logScrollRect.viewport = logScrollRect.GetComponent<RectTransform>();
+            }
+        }
+
+        private IEnumerator WatchUsbRoutine()
+        {
+            var wait = new WaitForSeconds(1f);
+            while (true)
+            {
+                yield return wait;
+
+                string[] now;
+                try
+                {
+                    now = ArduinoConnector.ListSerialPorts();
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (now == null) now = new string[0];
+
+                for (int i = 0; i < now.Length; i++)
+                {
+                    if (IndexOfPort(lastSeenPorts, now[i]) < 0)
+                    {
+                        AppendLog($"<color=#55FF55>[USB 감지]</color> {now[i]}", false);
+                        if (portField != null)
+                        {
+                            portField.text = now[i];
+                            portIndex = i;
+                        }
+
+                        TryAutoConnect();
+                    }
+                }
+
+                for (int i = 0; i < lastSeenPorts.Length; i++)
+                {
+                    if (IndexOfPort(now, lastSeenPorts[i]) < 0)
+                    {
+                        AppendLog($"<color=#FFAA55>[USB 해제]</color> {lastSeenPorts[i]}", false);
+                        var serial = connector;
+                        if (serial != null && serial.IsConnected && serial.SerialPortName == lastSeenPorts[i])
+                        {
+                            serial.Disconnect();
+                            autoConnectAttempted = false;
+                            AppendLog("[시리얼] USB가 빠져 연결을 끊었습니다.", false);
+                        }
+                    }
+                }
+
+                ports = now;
+                lastSeenPorts = now;
+            }
+        }
+
+        private static int IndexOfPort(string[] list, string port)
+        {
+            if (list == null || string.IsNullOrEmpty(port)) return -1;
+            for (int i = 0; i < list.Length; i++)
+            {
+                if (list[i] == port) return i;
+            }
+            return -1;
+        }
+
+        private void TryAutoConnect()
+        {
+            if (autoConnectAttempted) return;
+            if (portField == null || string.IsNullOrEmpty(portField.text.Trim())) return;
+            autoConnectAttempted = true;
+            StartCoroutine(AutoConnectAfterDelay());
+        }
+
+        private IEnumerator AutoConnectAfterDelay()
+        {
+            AppendLog("[시스템] USB 포트를 찾았습니다. 보드가 준비될 때까지 잠시 기다립니다.", false);
+            yield return new WaitForSeconds(1.6f);
+            OnConnectClicked();
+        }
+
+        private void HandleUiPointerClick(Vector2 screenPos)
+        {
+            if (handledClickFrame == Time.frameCount) return;
+            var es = EventSystem.current;
+            if (es == null) return;
+
+            var eventData = new PointerEventData(es) { position = screenPos };
+            raycastHits.Clear();
+            es.RaycastAll(eventData, raycastHits);
+
+            Button button = null;
+            for (int i = 0; i < raycastHits.Count; i++)
+            {
+                button = raycastHits[i].gameObject.GetComponentInParent<Button>();
+                if (button != null && button.interactable) break;
+                button = null;
+            }
+
+            if (button == null) return;
+            button.onClick.Invoke();
         }
 
         private T FindUi<T>(string objectName) where T : Component
@@ -237,6 +403,15 @@ namespace Homepad.UI
         {
             if (presetContainer == null) return;
 
+            var vg = presetContainer.GetComponent<VerticalLayoutGroup>();
+            if (vg != null)
+            {
+                vg.childControlWidth = true;
+                vg.childControlHeight = true;
+                vg.childForceExpandWidth = true;
+                vg.childForceExpandHeight = false;
+            }
+
             for (int i = presetContainer.childCount - 1; i >= 0; i--)
             {
                 Destroy(presetContainer.GetChild(i).gameObject);
@@ -270,8 +445,7 @@ namespace Homepad.UI
                 if (sendBtn != null)
                 {
                     var p = preset;
-                    sendBtn.onClick.RemoveAllListeners();
-                    sendBtn.onClick.AddListener(() => SendPreset(p));
+                    Bind(sendBtn, () => SendPreset(p));
                 }
             }
 
@@ -370,7 +544,18 @@ namespace Homepad.UI
                 }
             }
 
-            if (logText != null) logText.text = logBuilder.ToString();
+            if (logText != null)
+            {
+                logText.verticalOverflow = VerticalWrapMode.Overflow;
+                logText.text = logBuilder.ToString();
+                float height = Mathf.Max(logText.preferredHeight + 24f, 80f);
+                logText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
+                var content = logText.transform.parent as RectTransform;
+                if (content != null)
+                {
+                    content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
+                }
+            }
 
             if (logScrollRect != null)
             {
@@ -419,8 +604,13 @@ namespace Homepad.UI
 
         private void OnConnectClicked()
         {
-            var connector = GetConnector();
-            if (connector == null) return;
+            var serial = GetConnector();
+            if (serial == null)
+            {
+                AppendLog("[오류] ArduinoConnector를 만들 수 없습니다.", false);
+                return;
+            }
+
             string port = portField != null ? portField.text.Trim() : "";
             if (string.IsNullOrEmpty(port))
             {
@@ -430,7 +620,7 @@ namespace Homepad.UI
 
             int baud = 115200;
             if (baudField != null) int.TryParse(baudField.text.Trim(), out baud);
-            connector.SetSerialTarget(port, baud);
+            serial.SetSerialTarget(port, baud);
         }
 
         private void UpdateStatus(bool isConnected)
@@ -447,22 +637,35 @@ namespace Homepad.UI
             }
         }
 
-        private static void Bind(Button button, UnityEngine.Events.UnityAction action)
+        private void Bind(Button button, UnityEngine.Events.UnityAction action)
         {
             if (button == null) return;
             button.onClick.RemoveAllListeners();
-            button.onClick.AddListener(action);
+            button.onClick.AddListener(() =>
+            {
+                if (handledClickFrame == Time.frameCount) return;
+                handledClickFrame = Time.frameCount;
+                action();
+            });
         }
 
         private GameObject CreatePresetRowObject(Transform parent, HexPreset preset)
         {
-            GameObject row = new GameObject("PresetRow", typeof(RectTransform), typeof(Image));
+            GameObject row = new GameObject("PresetRow", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
             row.transform.SetParent(parent, false);
             var rowImg = row.GetComponent<Image>();
             rowImg.color = new Color(0.14f, 0.17f, 0.23f, 0.95f);
 
+            var layout = row.GetComponent<LayoutElement>();
+            layout.minHeight = 68f;
+            layout.preferredHeight = 68f;
+            layout.flexibleWidth = 1f;
+
             var rowRt = row.GetComponent<RectTransform>();
-            rowRt.sizeDelta = new Vector2(0, 68);
+            rowRt.anchorMin = new Vector2(0f, 1f);
+            rowRt.anchorMax = new Vector2(1f, 1f);
+            rowRt.pivot = new Vector2(0.5f, 1f);
+            rowRt.sizeDelta = new Vector2(0f, 68f);
 
             // Title
             var titleGo = new GameObject("Title", typeof(RectTransform), typeof(Text));

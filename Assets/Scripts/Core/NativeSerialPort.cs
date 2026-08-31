@@ -10,6 +10,7 @@ namespace Homepad.Core
     public sealed class NativeSerialPort : IDisposable
     {
         private FileStream unixStream;
+        private int unixFd = -1;
         private IntPtr windowsHandle = new IntPtr(-1);
         private readonly string portName;
         private readonly int baudRate;
@@ -17,7 +18,7 @@ namespace Homepad.Core
 
         public string PortName => portName;
         public int BaudRate => baudRate;
-        public bool IsOpen => unixStream != null || (windowsHandle != IntPtr.Zero && windowsHandle != new IntPtr(-1));
+        public bool IsOpen => unixFd >= 0 || unixStream != null || (windowsHandle != IntPtr.Zero && windowsHandle != new IntPtr(-1));
 
         public NativeSerialPort(string portName, int baudRate)
         {
@@ -56,8 +57,33 @@ namespace Homepad.Core
             }
         }
 
+        private static string ResolveUnixPortPath(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !path.StartsWith("/dev/tty.", StringComparison.Ordinal))
+            {
+                return path;
+            }
+
+            string callout = "/dev/cu." + path.Substring("/dev/tty.".Length);
+            try
+            {
+                if (File.Exists(callout)) return callout;
+            }
+            catch
+            {
+            }
+
+            return path;
+        }
+
         public void Close()
         {
+            if (unixFd >= 0)
+            {
+                try { UnixClose(unixFd); } catch { }
+                unixFd = -1;
+            }
+
             if (unixStream != null)
             {
                 try { unixStream.Dispose(); } catch { }
@@ -73,6 +99,20 @@ namespace Homepad.Core
 
         public void Write(byte[] buffer, int offset, int count)
         {
+            if (unixFd >= 0)
+            {
+                byte[] slice = buffer;
+                if (offset != 0 || count != buffer.Length)
+                {
+                    slice = new byte[count];
+                    Buffer.BlockCopy(buffer, offset, slice, 0, count);
+                }
+
+                int written = UnixWrite(unixFd, slice, count);
+                if (written < 0) throw new IOException("시리얼 쓰기 실패");
+                return;
+            }
+
             if (unixStream != null)
             {
                 unixStream.Write(buffer, offset, count);
@@ -81,9 +121,9 @@ namespace Homepad.Core
             }
 
             if (!IsOpen) throw new IOException("시리얼 포트가 열려 있지 않습니다.");
-            var slice = new byte[count];
-            Buffer.BlockCopy(buffer, offset, slice, 0, count);
-            if (!WriteFile(windowsHandle, slice, count, out int written, IntPtr.Zero) || written != count)
+            var winSlice = new byte[count];
+            Buffer.BlockCopy(buffer, offset, winSlice, 0, count);
+            if (!WriteFile(windowsHandle, winSlice, count, out int winWritten, IntPtr.Zero) || winWritten != count)
             {
                 throw new IOException("시리얼 쓰기 실패");
             }
@@ -91,9 +131,34 @@ namespace Homepad.Core
 
         public int Read(byte[] buffer, int offset, int count)
         {
+            if (unixFd >= 0)
+            {
+                byte[] dest = buffer;
+                if (offset != 0)
+                {
+                    dest = new byte[count];
+                }
+
+                int n = UnixRead(unixFd, dest, count);
+                if (n <= 0) return 0;
+                if (offset != 0)
+                {
+                    Buffer.BlockCopy(dest, 0, buffer, offset, n);
+                }
+
+                return n;
+            }
+
             if (unixStream != null)
             {
-                return unixStream.Read(buffer, offset, count);
+                try
+                {
+                    return unixStream.Read(buffer, offset, count);
+                }
+                catch (IOException)
+                {
+                    return 0;
+                }
             }
 
             if (!IsOpen) return 0;
@@ -120,31 +185,41 @@ namespace Homepad.Core
 
         private void OpenUnix()
         {
+            string path = ResolveUnixPortPath(portName);
             Exception lastError = null;
-            for (int attempt = 0; attempt < 3; attempt++)
+            for (int attempt = 0; attempt < 5; attempt++)
             {
                 try
                 {
-                    ConfigureUnixPort(portName, baudRate);
-                    unixStream = new FileStream(portName, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite, 1, false);
+                    ConfigureUnixPort(path, baudRate);
+                    int fd = UnixOpen(path, UnixOpenFlags);
+                    if (fd >= 0)
+                    {
+                        unixFd = fd;
+                        return;
+                    }
+
+                    lastError = new IOException($"open 실패 errno={Marshal.GetLastWin32Error()}");
+                    unixStream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite, 1, false);
                     return;
                 }
                 catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
                 {
                     lastError = ex;
                     Close();
-                    Thread.Sleep(400);
+                    Thread.Sleep(500);
                 }
             }
 
-            throw new IOException($"포트를 열 수 없습니다: {portName} ({lastError?.Message})");
+            int errno = Marshal.GetLastWin32Error();
+            throw new IOException($"포트를 열 수 없습니다: {path} ({lastError?.Message ?? "errno " + errno})");
         }
 
         private static void ConfigureUnixPort(string path, int baud)
         {
             string args = path.StartsWith("/dev/", StringComparison.Ordinal)
-                ? $"-f {path} {baud} cs8 -cstopb -parenb clocal cread raw -echo -ixon -ixoff"
-                : $"{path} {baud} cs8 -cstopb -parenb clocal cread raw -echo";
+                ? $"-f {path} {baud} cs8 -cstopb -parenb clocal cread -hupcl raw -echo -ixon -ixoff min 0 time 1"
+                : $"{path} {baud} cs8 -cstopb -parenb clocal cread raw -echo min 0 time 1";
 
             var info = new ProcessStartInfo
             {
@@ -346,6 +421,22 @@ namespace Homepad.Core
             };
             SetCommTimeouts(windowsHandle, ref timeouts);
         }
+
+        private static readonly int UnixOpenFlags = RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
+            ? 0x0002 | 0x20000
+            : 0x0002 | 0x0100;
+
+        [DllImport("libc", EntryPoint = "open", SetLastError = true)]
+        private static extern int UnixOpen(string pathname, int flags);
+
+        [DllImport("libc", EntryPoint = "close", SetLastError = true)]
+        private static extern int UnixClose(int fd);
+
+        [DllImport("libc", EntryPoint = "read", SetLastError = true)]
+        private static extern int UnixRead(int fd, byte[] buffer, int count);
+
+        [DllImport("libc", EntryPoint = "write", SetLastError = true)]
+        private static extern int UnixWrite(int fd, byte[] buffer, int count);
 
         private const uint GenericRead = 0x80000000;
         private const uint GenericWrite = 0x40000000;

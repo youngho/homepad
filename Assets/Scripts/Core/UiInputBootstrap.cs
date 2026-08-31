@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.SceneManagement;
 
@@ -12,23 +13,28 @@ namespace Homepad.Core
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
             SceneManager.sceneLoaded += OnSceneLoaded;
-            UseInputSystemOnly();
+            ConfigureUiInput();
         }
 
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            UseInputSystemOnly();
+            ConfigureUiInput();
         }
 
-        private static void UseInputSystemOnly()
+        public static void ConfigureUiInput()
         {
-            var legacyModules = Object.FindObjectsByType<StandaloneInputModule>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-            for (int i = 0; i < legacyModules.Length; i++)
-            {
-                Object.DestroyImmediate(legacyModules[i]);
-            }
+            GiveMouseToUi();
 
             var eventSystems = Object.FindObjectsByType<EventSystem>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            if (eventSystems.Length == 0)
+            {
+                var go = new GameObject("EventSystem");
+                go.AddComponent<EventSystem>();
+                go.AddComponent<InputSystemUIInputModule>();
+                GiveMouseToUi();
+                return;
+            }
+
             for (int i = 0; i < eventSystems.Length; i++)
             {
                 var eventSystem = eventSystems[i];
@@ -36,6 +42,21 @@ namespace Homepad.Core
                 {
                     eventSystem.gameObject.AddComponent<InputSystemUIInputModule>();
                 }
+
+                eventSystem.enabled = true;
+            }
+        }
+
+        public static void GiveMouseToUi()
+        {
+            var asset = InputSystem.actions;
+            if (asset == null) return;
+
+            for (int i = 0; i < asset.actionMaps.Count; i++)
+            {
+                var map = asset.actionMaps[i];
+                if (map.name == "UI") map.Enable();
+                else map.Disable();
             }
         }
     }

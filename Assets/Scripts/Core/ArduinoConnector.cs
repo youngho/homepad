@@ -94,6 +94,11 @@ namespace Homepad.Core
 
         private void Start()
         {
+            if (cts != null || (isConnected && linkMode == ArduinoLinkMode.Serial))
+            {
+                return;
+            }
+
             if (linkMode == ArduinoLinkMode.Serial && string.IsNullOrEmpty(serialPortName))
             {
                 serialPortName = PlayerPrefs.GetString("Homepad.SerialPort", "");
@@ -102,7 +107,6 @@ namespace Homepad.Core
 
             if (!autoConnect)
             {
-                OnLogMessage?.Invoke("[시스템] 시리얼 포트를 선택한 뒤 연결하세요.", false);
                 return;
             }
 
@@ -152,14 +156,20 @@ namespace Homepad.Core
             try { toCancel?.Cancel(); }
             catch (ObjectDisposedException) { }
 
-            try { networkStream?.Close(); } catch { }
-            try { tcpClient?.Close(); } catch { }
-            try { serialPort?.Dispose(); } catch { }
-
+            var stream = networkStream;
+            var client = tcpClient;
+            var port = serialPort;
             networkStream = null;
             tcpClient = null;
             serialPort = null;
-            toCancel?.Dispose();
+
+            Task.Run(() =>
+            {
+                try { stream?.Close(); } catch { }
+                try { client?.Close(); } catch { }
+                try { port?.Dispose(); } catch { }
+                try { toCancel?.Dispose(); } catch { }
+            });
 
             if (isConnected)
             {
@@ -223,18 +233,25 @@ namespace Homepad.Core
 
         private void ConnectSerial(CancellationToken token)
         {
+            string target = serialPortName;
+            int baud = serialBaudRate;
+            OnLogMessage?.Invoke($"[시리얼] {target} @ {baud} 접속 시도...", true);
+            Debug.Log($"[Homepad] 시리얼 접속 시도: {target} @ {baud}");
+
             Task.Run(() =>
             {
                 try
                 {
-                    UnityMainThreadDispatcher.Enqueue(() =>
-                    {
-                        OnLogMessage?.Invoke($"[시리얼] {serialPortName} @ {serialBaudRate} 접속 시도...", true);
-                    });
 
                     var port = new NativeSerialPort(serialPortName, serialBaudRate);
                     port.Open();
-                    Thread.Sleep(2000);
+                    Thread.Sleep(1200);
+                    if (token.IsCancellationRequested)
+                    {
+                        port.Dispose();
+                        return;
+                    }
+
                     serialPort = port;
                     isConnected = true;
 
@@ -242,6 +259,7 @@ namespace Homepad.Core
                     {
                         OnConnectionStatusChanged?.Invoke(true);
                         OnLogMessage?.Invoke($"[시리얼] 연결 성공 ({serialPortName}, {serialBaudRate} baud)", false);
+                        Debug.Log($"[Homepad] 시리얼 연결 성공: {serialPortName} @ {serialBaudRate}");
                     });
 
                     SerialReceiveLoop(token);
