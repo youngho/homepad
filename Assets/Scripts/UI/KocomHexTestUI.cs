@@ -60,6 +60,7 @@ namespace Homepad.UI
 
         [Header("Font & Appearance")]
         [SerializeField] private Font customFont;
+        [SerializeField] private Font customFontBold;
         [SerializeField] private Sprite roundedSprite;
 
         private readonly StringBuilder logBuilder = new StringBuilder();
@@ -69,6 +70,7 @@ namespace Homepad.UI
         private const int MaxLogLines = 120;
         private HexCategory currentCategory = HexCategory.All;
         private Font uiFont;
+        private Font uiFontBold;
         private ArduinoConnector connector;
         private string[] lastSeenPorts = new string[0];
         private readonly List<RaycastResult> raycastHits = new List<RaycastResult>();
@@ -91,6 +93,7 @@ namespace Homepad.UI
                 : (statusText != null && statusText.font != null)
                     ? statusText.font
                     : (Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf"));
+            uiFontBold = customFontBold != null ? customFontBold : uiFont;
 
             if (customHexInput != null && string.IsNullOrEmpty(customHexInput.text))
             {
@@ -399,7 +402,6 @@ namespace Homepad.UI
                 if (txt != null)
                 {
                     txt.color = isActive ? Color.white : TabInactiveTextColor;
-                    txt.fontStyle = FontStyle.Bold;
                 }
             }
         }
@@ -682,22 +684,22 @@ namespace Homepad.UI
             rowImg.color = (rowIndex % 2 == 0) ? PresetRowA : PresetRowB;
 
             var layout = row.GetComponent<LayoutElement>();
-            layout.minHeight = 68f;
-            layout.preferredHeight = 68f;
+            layout.minHeight = 84f;
+            layout.preferredHeight = 84f;
             layout.flexibleWidth = 1f;
 
             var rowRt = row.GetComponent<RectTransform>();
             rowRt.anchorMin = new Vector2(0f, 1f);
             rowRt.anchorMax = new Vector2(1f, 1f);
             rowRt.pivot = new Vector2(0.5f, 1f);
-            rowRt.sizeDelta = new Vector2(0f, 68f);
+            rowRt.sizeDelta = new Vector2(0f, 84f);
 
             var titleGo = new GameObject("Title", typeof(RectTransform), typeof(Text));
             titleGo.transform.SetParent(row.transform, false);
             var title = titleGo.GetComponent<Text>();
-            title.font = uiFont;
-            title.fontSize = 18;
-            title.fontStyle = FontStyle.Bold;
+            title.font = uiFontBold;
+            title.fontSize = 22;
+            title.fontStyle = FontStyle.Normal;
             title.text = preset.title;
             title.color = Color.white;
             title.alignment = TextAnchor.MiddleLeft;
@@ -713,7 +715,7 @@ namespace Homepad.UI
             hexGo.transform.SetParent(row.transform, false);
             var hexText = hexGo.GetComponent<Text>();
             hexText.font = uiFont;
-            hexText.fontSize = 13;
+            hexText.fontSize = 16;
             hexText.text = preset.hexString;
             hexText.color = HexCodeCyan;
             hexText.alignment = TextAnchor.MiddleLeft;
@@ -746,9 +748,9 @@ namespace Homepad.UI
             var btnTextGo = new GameObject("Text", typeof(RectTransform), typeof(Text));
             btnTextGo.transform.SetParent(sendBtnGo.transform, false);
             var btnText = btnTextGo.GetComponent<Text>();
-            btnText.font = uiFont;
-            btnText.fontSize = 16;
-            btnText.fontStyle = FontStyle.Bold;
+            btnText.font = uiFontBold;
+            btnText.fontSize = 18;
+            btnText.fontStyle = FontStyle.Normal;
             btnText.text = "전송";
             btnText.alignment = TextAnchor.MiddleCenter;
             btnText.color = Color.white;
