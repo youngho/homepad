@@ -88,7 +88,7 @@ namespace Homepad.Core
             return packet;
         }
 
-        public static byte[] CreateLightRoomPacket(ushort room, IList<LightState> lightsInRoom)
+        public static byte[] CreateLightRoomPacket(ushort room, IReadOnlyList<LightState> lightsInRoom)
         {
             byte[] value = new byte[8];
             if (lightsInRoom != null)

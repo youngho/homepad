@@ -86,8 +86,9 @@ namespace Homepad.UI
             }
         }
 
-        private static LightState FindLight(System.Collections.Generic.IList<LightState> managerLights, int lightId)
+        private static LightState FindLight(System.Collections.Generic.IReadOnlyList<LightState> managerLights, int lightId)
         {
+            if (managerLights == null) return null;
             for (int i = 0; i < managerLights.Count; i++)
             {
                 if (managerLights[i].id == lightId) return managerLights[i];
