@@ -22,6 +22,7 @@ namespace Homepad.UI
         private static readonly Color MutedGreen = new Color(0.337f, 0.588f, 0.408f, 1f);
         private static readonly Color MutedRed = new Color(0.753f, 0.337f, 0.337f, 1f);
         private static readonly Color HexCodeCyan = new Color(0.43f, 0.65f, 0.84f, 1f);
+        private static readonly Color LogSelectionColor = new Color(0.32f, 0.52f, 0.82f, 0.4f);
 
         [Header("Serial Connection")]
         [SerializeField] private InputField portField;
@@ -57,7 +58,6 @@ namespace Homepad.UI
         [SerializeField] private Text logText;
         [SerializeField] private ScrollRect logScrollRect;
         [SerializeField] private Button clearLogButton;
-        private InputField logField;
 
         [Header("Font & Appearance")]
         [SerializeField] private Font customFont;
@@ -77,6 +77,15 @@ namespace Homepad.UI
         private readonly List<RaycastResult> raycastHits = new List<RaycastResult>();
         private int handledClickFrame = -1;
         private bool autoConnectAttempted;
+        private bool logDragActive;
+        private Vector2 logDragStart;
+        private RectTransform logHighlightRoot;
+        private readonly List<Image> logHighlightPool = new List<Image>();
+        private int logSelFrom = -1;
+        private int logSelTo = -1;
+        private float logSelXFrom;
+        private float logSelXTo;
+        private readonly List<UILineInfo> logLineInfos = new List<UILineInfo>();
 
         private void Awake()
         {
@@ -118,13 +127,37 @@ namespace Homepad.UI
 
         private void Update()
         {
-            if (Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame) return;
-            HandleUiPointerClick(Mouse.current.position.ReadValue());
-        }
+            var mouse = Mouse.current;
+            if (mouse == null) return;
 
-        private void LateUpdate()
-        {
-            CopyLogSelectionIfRequested();
+            Vector2 pos = mouse.position.ReadValue();
+            if (mouse.leftButton.wasPressedThisFrame)
+            {
+                HandleUiPointerClick(pos);
+                logDragActive = handledClickFrame != Time.frameCount && IsPointerOverLog(pos);
+                if (logDragActive)
+                {
+                    logDragStart = pos;
+                    UpdateLogSelection(pos, pos, false);
+                }
+                else
+                {
+                    ClearLogSelection();
+                }
+            }
+
+            if (logDragActive && mouse.leftButton.isPressed)
+            {
+                UpdateLogSelection(logDragStart, pos, false);
+            }
+
+            if (logDragActive && mouse.leftButton.wasReleasedThisFrame)
+            {
+                logDragActive = false;
+                UpdateLogSelection(logDragStart, pos, true);
+            }
+
+            CopyLogIfShortcutPressed();
         }
 
         private void HookConnector()
@@ -201,7 +234,6 @@ namespace Homepad.UI
             if (logText == null) logText = FindUi<Text>("Log");
             if (logScrollRect == null) logScrollRect = FindUi<ScrollRect>("LogScrollView");
             if (clearLogButton == null) clearLogButton = FindUi<Button>("ClearLog");
-            if (logField == null && logText != null) logField = logText.GetComponent<InputField>();
 
             if (connectButton == null || refreshButton == null || logText == null)
             {
@@ -213,7 +245,7 @@ namespace Homepad.UI
         {
             if (logText == null) return;
 
-            logText.raycastTarget = true;
+            logText.raycastTarget = false;
             logText.supportRichText = true;
             logText.horizontalOverflow = HorizontalWrapMode.Wrap;
             logText.verticalOverflow = VerticalWrapMode.Overflow;
@@ -231,30 +263,7 @@ namespace Homepad.UI
                 logScrollRect.viewport = logScrollRect.GetComponent<RectTransform>();
             }
 
-            EnsureLogSelectable();
-        }
-
-        private void EnsureLogSelectable()
-        {
-            if (logText == null) return;
-
-            var hit = logText.GetComponent<Image>();
-            if (hit == null) hit = logText.gameObject.AddComponent<Image>();
-            hit.color = new Color(1f, 1f, 1f, 0f);
-            hit.raycastTarget = true;
-
-            logField = logText.GetComponent<InputField>();
-            if (logField == null) logField = logText.gameObject.AddComponent<InputField>();
-            logField.textComponent = logText;
-            logField.targetGraphic = hit;
-            logField.lineType = InputField.LineType.MultiLineNewline;
-            logField.readOnly = true;
-            logField.shouldHideMobileInput = true;
-            logField.customCaretColor = true;
-            logField.caretColor = new Color(0.75f, 0.82f, 0.9f, 1f);
-            logField.selectionColor = new Color(0.28f, 0.48f, 0.72f, 0.45f);
-            logField.characterLimit = 0;
-            logField.transition = Selectable.Transition.None;
+            EnsureLogHighlightRoot();
         }
 
         private IEnumerator WatchUsbRoutine()
@@ -349,11 +358,6 @@ namespace Homepad.UI
             Button button = null;
             for (int i = 0; i < raycastHits.Count; i++)
             {
-                if (logField != null && raycastHits[i].gameObject.GetComponentInParent<InputField>() == logField)
-                {
-                    return;
-                }
-
                 button = raycastHits[i].gameObject.GetComponentInParent<Button>();
                 if (button != null && button.interactable) break;
                 button = null;
@@ -576,8 +580,8 @@ namespace Homepad.UI
         {
             logBuilder.Clear();
             logLineCount = 0;
-            if (logField != null) logField.text = string.Empty;
-            else if (logText != null) logText.text = string.Empty;
+            if (logText != null) logText.text = string.Empty;
+            ClearLogSelection();
         }
 
         private void AppendLog(string message, bool isTx)
@@ -603,9 +607,7 @@ namespace Homepad.UI
             if (logText != null)
             {
                 logText.verticalOverflow = VerticalWrapMode.Overflow;
-                string visible = StripRichText(logBuilder.ToString());
-                if (logField != null) logField.text = visible;
-                else logText.text = visible;
+                logText.text = logBuilder.ToString();
                 float height = Mathf.Max(logText.preferredHeight + 24f, 80f);
                 logText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
                 var content = logText.transform.parent as RectTransform;
@@ -620,6 +622,8 @@ namespace Homepad.UI
                 Canvas.ForceUpdateCanvases();
                 logScrollRect.verticalNormalizedPosition = 0f;
             }
+
+            ClearLogSelection();
         }
 
         private void RefreshPorts(bool preferSaved)
@@ -698,9 +702,9 @@ namespace Homepad.UI
             }
         }
 
-        private void CopyLogSelectionIfRequested()
+        private void CopyLogIfShortcutPressed()
         {
-            if (logField == null || !logField.isFocused) return;
+            if (IsTypingInInputField()) return;
             var kb = Keyboard.current;
             if (kb == null) return;
 
@@ -709,13 +713,280 @@ namespace Homepad.UI
                 kb.leftCtrlKey.isPressed || kb.rightCtrlKey.isPressed);
             if (!copyChord) return;
 
-            string raw = logField.text ?? string.Empty;
-            int a = Mathf.Min(logField.selectionAnchorPosition, logField.caretPosition);
-            int b = Mathf.Max(logField.selectionAnchorPosition, logField.caretPosition);
-            a = Mathf.Clamp(a, 0, raw.Length);
-            b = Mathf.Clamp(b, 0, raw.Length);
-            string selected = b > a ? raw.Substring(a, b - a) : raw;
-            GUIUtility.systemCopyBuffer = StripRichText(selected);
+            if (logSelFrom >= 0)
+            {
+                CopyCurrentLogSelection();
+                return;
+            }
+
+            CopyPlainText(StripRichText(logBuilder.ToString()));
+        }
+
+        private bool IsTypingInInputField()
+        {
+            var selected = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+            if (selected == null) return false;
+            var field = selected.GetComponent<InputField>();
+            return field != null && field.isFocused && !field.readOnly;
+        }
+
+        private Camera LogCanvasCamera()
+        {
+            Canvas canvas = logText != null
+                ? logText.canvas
+                : (logScrollRect != null ? logScrollRect.GetComponentInParent<Canvas>() : null);
+            if (canvas == null || canvas.renderMode == RenderMode.ScreenSpaceOverlay) return null;
+            return canvas.worldCamera;
+        }
+
+        private bool IsPointerOverLog(Vector2 screenPos)
+        {
+            if (logScrollRect == null) return false;
+            var area = logScrollRect.GetComponent<RectTransform>();
+            return area != null && RectTransformUtility.RectangleContainsScreenPoint(area, screenPos, LogCanvasCamera());
+        }
+
+        private void UpdateLogSelection(Vector2 screenStart, Vector2 screenEnd, bool copy)
+        {
+            if (logText == null || !RefreshLogLineInfos())
+            {
+                ClearLogSelection();
+                return;
+            }
+
+            int a = LogLineIndexAt(screenStart);
+            int b = LogLineIndexAt(screenEnd);
+            if (a < 0 && b < 0)
+            {
+                ClearLogSelection();
+                return;
+            }
+
+            if (a < 0) a = b;
+            if (b < 0) b = a;
+
+            logSelFrom = a;
+            logSelTo = b;
+            logSelXFrom = LogXFromLeft(screenStart);
+            logSelXTo = LogXFromLeft(screenEnd);
+            RebuildLogHighlights((screenStart - screenEnd).sqrMagnitude < 64f);
+            if (copy) CopyCurrentLogSelection();
+        }
+
+        private void CopyCurrentLogSelection()
+        {
+            if (logText == null || !RefreshLogLineInfos() || logSelFrom < 0) return;
+
+            int from = Mathf.Clamp(Mathf.Min(logSelFrom, logSelTo), 0, logLineInfos.Count - 1);
+            int to = Mathf.Clamp(Mathf.Max(logSelFrom, logSelTo), 0, logLineInfos.Count - 1);
+            string raw = logText.text ?? string.Empty;
+            int start = Mathf.Clamp(logLineInfos[from].startCharIdx, 0, raw.Length);
+            int end = to + 1 < logLineInfos.Count
+                ? Mathf.Clamp(logLineInfos[to + 1].startCharIdx, start, raw.Length)
+                : raw.Length;
+            if (end < start) end = raw.Length;
+
+            string selected = StripRichText(raw.Substring(start, end - start)).Trim();
+            if (selected.Length == 0) selected = StripRichText(raw).TrimEnd();
+            CopyPlainText(selected);
+        }
+
+        private bool RefreshLogLineInfos()
+        {
+            logLineInfos.Clear();
+            if (logText == null || string.IsNullOrEmpty(logText.text)) return false;
+
+            var gen = logText.cachedTextGenerator;
+            if (gen == null) return false;
+            if (gen.lineCount == 0)
+            {
+                Vector2 size = logText.rectTransform.rect.size;
+                if (size.x < 8f) size.x = 8f;
+                gen.Populate(logText.text, logText.GetGenerationSettings(size));
+            }
+
+            int n = gen.lineCount;
+            for (int i = 0; i < n; i++)
+            {
+                logLineInfos.Add(gen.lines[i]);
+            }
+
+            return logLineInfos.Count > 0;
+        }
+
+        private float LogPixelsPerUnit()
+        {
+            return logText != null ? Mathf.Max(logText.pixelsPerUnit, 0.01f) : 1f;
+        }
+
+        private int LogLineIndexAt(Vector2 screenPos)
+        {
+            if (logText == null || logLineInfos.Count == 0) return -1;
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(logText.rectTransform, screenPos, LogCanvasCamera(), out var local))
+            {
+                return -1;
+            }
+
+            float ppu = LogPixelsPerUnit();
+            for (int i = 0; i < logLineInfos.Count; i++)
+            {
+                float top = logLineInfos[i].topY / ppu;
+                float bot = top - logLineInfos[i].height / ppu;
+                if (local.y <= top + 0.5f && local.y >= bot - 0.5f) return i;
+            }
+
+            if (local.y > logLineInfos[0].topY / ppu) return 0;
+            return logLineInfos.Count - 1;
+        }
+
+        private float LogXFromLeft(Vector2 screenPos)
+        {
+            if (logText == null) return 0f;
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(logText.rectTransform, screenPos, LogCanvasCamera(), out var local))
+            {
+                return 0f;
+            }
+
+            float width = Mathf.Max(logText.rectTransform.rect.width, 1f);
+            return Mathf.Clamp(local.x + width * 0.5f, 0f, width);
+        }
+
+        private void EnsureLogHighlightRoot()
+        {
+            if (logText == null || logHighlightRoot != null) return;
+
+            var go = new GameObject("LogHighlight", typeof(RectTransform));
+            go.transform.SetParent(logText.transform.parent, false);
+            go.transform.SetAsFirstSibling();
+            logHighlightRoot = go.GetComponent<RectTransform>();
+            SyncLogHighlightRoot();
+        }
+
+        private void SyncLogHighlightRoot()
+        {
+            if (logHighlightRoot == null || logText == null) return;
+            var src = logText.rectTransform;
+            var rt = logHighlightRoot;
+            rt.anchorMin = src.anchorMin;
+            rt.anchorMax = src.anchorMax;
+            rt.pivot = src.pivot;
+            rt.anchoredPosition = src.anchoredPosition;
+            rt.sizeDelta = src.sizeDelta;
+            rt.offsetMin = src.offsetMin;
+            rt.offsetMax = src.offsetMax;
+            int logIndex = logText.transform.GetSiblingIndex();
+            if (logHighlightRoot.GetSiblingIndex() > logIndex)
+            {
+                logHighlightRoot.SetSiblingIndex(logIndex);
+            }
+        }
+
+        private Image GetLogHighlight(int index)
+        {
+            EnsureLogHighlightRoot();
+            while (logHighlightPool.Count <= index)
+            {
+                var go = new GameObject("Sel", typeof(RectTransform), typeof(Image));
+                go.transform.SetParent(logHighlightRoot, false);
+                var img = go.GetComponent<Image>();
+                img.raycastTarget = false;
+                img.color = LogSelectionColor;
+                img.sprite = roundedSprite != null
+                    ? roundedSprite
+                    : Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 4f, 4f), new Vector2(0.5f, 0.5f), 4f);
+                if (roundedSprite != null)
+                {
+                    img.type = Image.Type.Sliced;
+                    img.pixelsPerUnitMultiplier = 2.4f;
+                }
+
+                var rt = go.GetComponent<RectTransform>();
+                rt.anchorMin = new Vector2(0f, 1f);
+                rt.anchorMax = new Vector2(0f, 1f);
+                rt.pivot = new Vector2(0f, 1f);
+                logHighlightPool.Add(img);
+            }
+
+            return logHighlightPool[index];
+        }
+
+        private void RebuildLogHighlights(bool wholeLines)
+        {
+            if (logText == null || logSelFrom < 0 || !RefreshLogLineInfos())
+            {
+                ClearLogSelectionVisual();
+                return;
+            }
+
+            SyncLogHighlightRoot();
+
+            int from = Mathf.Clamp(Mathf.Min(logSelFrom, logSelTo), 0, logLineInfos.Count - 1);
+            int to = Mathf.Clamp(Mathf.Max(logSelFrom, logSelTo), 0, logLineInfos.Count - 1);
+            float width = Mathf.Max(logText.rectTransform.rect.width, 1f);
+            float ppu = LogPixelsPerUnit();
+            float xA = logSelFrom <= logSelTo ? logSelXFrom : logSelXTo;
+            float xB = logSelFrom <= logSelTo ? logSelXTo : logSelXFrom;
+
+            int used = 0;
+            for (int i = from; i <= to; i++)
+            {
+                float xMin = 0f;
+                float xMax = width;
+                if (!wholeLines)
+                {
+                    if (from == to)
+                    {
+                        xMin = Mathf.Min(xA, xB);
+                        xMax = Mathf.Max(xA, xB);
+                        if (xMax - xMin < 10f)
+                        {
+                            xMin = 0f;
+                            xMax = width;
+                        }
+                    }
+                    else if (i == from)
+                    {
+                        xMin = xA;
+                    }
+                    else if (i == to)
+                    {
+                        xMax = xB;
+                    }
+                }
+
+                var img = GetLogHighlight(used++);
+                img.gameObject.SetActive(true);
+                var rt = img.rectTransform;
+                float top = logLineInfos[i].topY / ppu;
+                float lineH = Mathf.Max(logLineInfos[i].height / ppu, 8f);
+                rt.anchoredPosition = new Vector2(xMin, top);
+                rt.sizeDelta = new Vector2(Mathf.Max(8f, xMax - xMin), lineH);
+            }
+
+            for (int i = used; i < logHighlightPool.Count; i++)
+            {
+                logHighlightPool[i].gameObject.SetActive(false);
+            }
+        }
+
+        private void ClearLogSelection()
+        {
+            logSelFrom = -1;
+            logSelTo = -1;
+            ClearLogSelectionVisual();
+        }
+
+        private void ClearLogSelectionVisual()
+        {
+            for (int i = 0; i < logHighlightPool.Count; i++)
+            {
+                if (logHighlightPool[i] != null) logHighlightPool[i].gameObject.SetActive(false);
+            }
+        }
+
+        private static void CopyPlainText(string text)
+        {
+            GUIUtility.systemCopyBuffer = text ?? string.Empty;
         }
 
         private static string StripRichText(string s)
