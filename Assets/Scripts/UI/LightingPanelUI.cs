@@ -11,51 +11,40 @@ namespace Homepad.UI
         private static readonly Color OnBg = new Color(0.22f, 0.26f, 0.34f);
         private static readonly Color OffBg = new Color(0.12f, 0.14f, 0.18f);
 
-        private Button[] lightButtons;
-        private Text[] statusTexts;
-        private Text[] nameTexts;
+        [SerializeField] private Button allOffButton;
+        [SerializeField] private LightSlot[] lights;
 
-        public void Build()
+        [System.Serializable]
+        public class LightSlot
         {
-            var root = GetComponent<RectTransform>();
-            var allOff = UiFactory.CreateButton("AllOff", root, new Vector2(0, 1), Vector2.one, new Vector2(0, -72), Vector2.zero, "일괄 소등", new Color(0.18f, 0.2f, 0.26f), 28);
-            allOff.onClick.AddListener(() => WallpadManager.Instance.TurnOffAllLights());
+            public int lightId;
+            public Button button;
+            public Text nameText;
+            public Text statusText;
+        }
 
-            var manager = WallpadManager.Instance;
-            int count = manager != null ? manager.Lights.Count : 0;
-            lightButtons = new Button[count];
-            statusTexts = new Text[count];
-            nameTexts = new Text[count];
-
-            int columns = 3;
-            for (int i = 0; i < count; i++)
+        private void Start()
+        {
+            if (allOffButton != null)
             {
-                int col = i % columns;
-                int row = i / columns;
-                float x0 = col / (float)columns;
-                float x1 = (col + 1) / (float)columns;
-                float y1 = 1f - (row * 0.28f) - 0.10f;
-                float y0 = y1 - 0.25f;
-
-                int lightId = manager.Lights[i].id;
-                var button = UiFactory.CreateButton(
-                    $"Light{lightId}",
-                    root,
-                    new Vector2(x0, y0),
-                    new Vector2(x1, y1),
-                    new Vector2(8, 8),
-                    new Vector2(-8, -8),
-                    "",
-                    OffBg);
-                button.onClick.AddListener(() => WallpadManager.Instance.ToggleLight(lightId));
-                lightButtons[i] = button;
-                nameTexts[i] = UiFactory.CreateLabel("Name", button.transform, new Vector2(0, 0.45f), Vector2.one, new Vector2(16, 0), new Vector2(-16, -10), manager.Lights[i].name, 26, Color.white, TextAnchor.MiddleLeft);
-                statusTexts[i] = UiFactory.CreateLabel("Status", button.transform, Vector2.zero, new Vector2(1, 0.5f), new Vector2(16, 12), new Vector2(-16, 0), "OFF", 22, OffColor, TextAnchor.MiddleLeft);
+                allOffButton.onClick.RemoveAllListeners();
+                allOffButton.onClick.AddListener(() => WallpadManager.Instance.TurnOffAllLights());
             }
 
-            if (manager != null)
+            if (lights != null)
             {
-                manager.OnStateChanged += RefreshAll;
+                for (int i = 0; i < lights.Length; i++)
+                {
+                    int lightId = lights[i].lightId;
+                    if (lights[i].button == null) continue;
+                    lights[i].button.onClick.RemoveAllListeners();
+                    lights[i].button.onClick.AddListener(() => WallpadManager.Instance.ToggleLight(lightId));
+                }
+            }
+
+            if (WallpadManager.Instance != null)
+            {
+                WallpadManager.Instance.OnStateChanged += RefreshAll;
             }
 
             RefreshAll();
@@ -69,25 +58,42 @@ namespace Homepad.UI
 
         public void RefreshAll()
         {
-            if (WallpadManager.Instance == null || lightButtons == null) return;
-            var lights = WallpadManager.Instance.Lights;
-            for (int i = 0; i < lights.Count && i < lightButtons.Length; i++)
+            if (WallpadManager.Instance == null || lights == null) return;
+            var managerLights = WallpadManager.Instance.Lights;
+            for (int i = 0; i < lights.Length; i++)
             {
-                bool isOn = lights[i].isOn;
-                if (statusTexts[i] != null)
+                var slot = lights[i];
+                var state = FindLight(managerLights, slot.lightId);
+                if (state == null) continue;
+
+                bool isOn = state.isOn;
+                if (slot.statusText != null)
                 {
-                    statusTexts[i].text = isOn ? "ON" : "OFF";
-                    statusTexts[i].color = isOn ? OnColor : OffColor;
+                    slot.statusText.text = isOn ? "ON" : "OFF";
+                    slot.statusText.color = isOn ? OnColor : OffColor;
                 }
 
-                if (nameTexts[i] != null)
+                if (slot.nameText != null)
                 {
-                    nameTexts[i].text = lights[i].name;
+                    slot.nameText.text = state.name;
                 }
 
-                var image = lightButtons[i].GetComponent<Image>();
-                if (image != null) image.color = isOn ? OnBg : OffBg;
+                if (slot.button != null)
+                {
+                    var image = slot.button.GetComponent<Image>();
+                    if (image != null) image.color = isOn ? OnBg : OffBg;
+                }
             }
+        }
+
+        private static LightState FindLight(System.Collections.Generic.IList<LightState> managerLights, int lightId)
+        {
+            for (int i = 0; i < managerLights.Count; i++)
+            {
+                if (managerLights[i].id == lightId) return managerLights[i];
+            }
+
+            return null;
         }
     }
 }

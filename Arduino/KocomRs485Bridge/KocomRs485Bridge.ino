@@ -1,75 +1,60 @@
 /*
-  코콤 RS-485 브리지 — Arduino UNO WiFi Rev2 + MAX485
-  Unity(TCP 8080) <-> Serial1 9600 8N1 <-> 월패드 버스
-
-  배선
-    MAX485 RO -> D0 (Serial1 RX)
-    MAX485 DI -> D1 (Serial1 TX)
-    MAX485 DE, RE -> D2 (함께 묶음)
-    MAX485 A/B -> 월패드 RS-485
-    접지 공통
-
-  라이브러리: WiFiNINA
-  보드: Arduino Uno WiFi Rev2
+  Kocom RS-485 Bridge for Unity Wallpad
+  - 검증된 wallpad Rs485Bus 엔진(충돌 방지 타이밍, 에코 억제, 자동/수동 방향 제어) 기반
+  - PC Unity (USB Serial 115200) <-> RS-485 버스 (Serial1 9600 8N1) 고속 투명 바이너리 브릿지
 */
 
-#include <WiFiNINA.h>
+#include "Config.h"
+#include "Rs485Bus.h"
 
-char ssid[] = "YOUR_SSID";
-char pass[] = "YOUR_PASSWORD";
+Rs485Bus bus;
 
-const uint16_t kTcpPort = 8080;
-const uint8_t kDePin = 2;
-const uint32_t kRs485Baud = 9600;
-const uint32_t kTxHoldMs = 2;
-
-WiFiServer server(kTcpPort);
-WiFiClient client;
-
-void setTransmit(bool enable) {
-  digitalWrite(kDePin, enable ? HIGH : LOW);
-}
+// USB 수신 버퍼
+uint8_t usbBuf[FRAME_MAX_LEN];
+size_t usbLen = 0;
+uint32_t lastUsbByteMs = 0;
 
 void setup() {
-  pinMode(kDePin, OUTPUT);
-  setTransmit(false);
-
-  Serial.begin(115200);
-  Serial1.begin(kRs485Baud);
-
-  while (WiFi.begin(ssid, pass) != WL_CONNECTED) {
-    delay(1500);
+  Serial.begin(USB_BAUD);
+  
+  // USB 시리얼 초기화 대기 (네이티브 USB 보드 대응, 최대 2초)
+  const uint32_t waitStart = millis();
+  while (!Serial && (millis() - waitStart < 2000)) {
   }
-
-  server.begin();
-  Serial.print("Kocom RS485 bridge ");
-  Serial.println(WiFi.localIP());
+  
+  bus.begin();
 }
 
 void loop() {
-  if (!client || !client.connected()) {
-    client = server.available();
-    if (client) {
-      Serial.println("Unity connected");
+  // 1. RS-485 버스 -> PC (Unity)
+  while (bus.available()) {
+    int b = bus.read();
+    if (b >= 0) {
+      Serial.write((uint8_t)b);
     }
-    return;
   }
 
-  if (client.available() > 0) {
-    setTransmit(true);
-    while (client.available() > 0) {
-      int incoming = client.read();
-      if (incoming < 0) break;
-      Serial1.write((uint8_t)incoming);
+  // 2. PC (Unity) -> RS-485 버스
+  while (Serial.available()) {
+    int b = Serial.read();
+    if (b < 0) break;
+
+    if (usbLen < FRAME_MAX_LEN) {
+      usbBuf[usbLen++] = (uint8_t)b;
+      lastUsbByteMs = millis();
     }
-    Serial1.flush();
-    delay(kTxHoldMs);
-    setTransmit(false);
+
+    // 코콤 21바이트 표준 프레임 완성 감지 (AA 55 ... 0D 0D)
+    if (usbLen >= 21 && usbBuf[0] == 0xAA && usbBuf[1] == 0x55 && 
+        usbBuf[usbLen - 2] == 0x0D && usbBuf[usbLen - 1] == 0x0D) {
+      bus.send(usbBuf, usbLen);
+      usbLen = 0;
+    }
   }
 
-  while (Serial1.available() > 0) {
-    int incoming = Serial1.read();
-    if (incoming < 0) break;
-    client.write((uint8_t)incoming);
+  // 패킷 조각이 남아있고 일정 시간(10ms) 동안 추가 데이터가 없으면 전송 시도
+  if (usbLen > 0 && (millis() - lastUsbByteMs > 10)) {
+    bus.send(usbBuf, usbLen);
+    usbLen = 0;
   }
 }

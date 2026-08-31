@@ -6,31 +6,30 @@ namespace Homepad.UI
 {
     public class ElevatorPanelUI : MonoBehaviour
     {
-        private Button callButton;
-        private Text callButtonText;
-        private Text floorText;
-        private Text statusText;
+        [SerializeField] private Button callButton;
+        [SerializeField] private Text callButtonText;
+        [SerializeField] private Text floorText;
+        [SerializeField] private Text statusText;
+        [SerializeField] private Text titleText;
 
-        public void Build()
+        private void Start()
         {
-            var root = GetComponent<RectTransform>();
-            var card = UiFactory.Create("Card", root, new Vector2(0.18f, 0.08f), new Vector2(0.82f, 0.92f), Vector2.zero, Vector2.zero);
-            UiFactory.AddImage(card, new Color(0.13f, 0.16f, 0.22f), false);
-
-            int floor = WallpadManager.Instance != null ? WallpadManager.Instance.HouseholdFloor : 12;
-            UiFactory.CreateLabel("Title", card, new Vector2(0, 0.78f), Vector2.one, Vector2.zero, Vector2.zero, $"{floor}층 호출", 28, new Color(1, 1, 1, 0.7f), TextAnchor.MiddleCenter);
-            floorText = UiFactory.CreateLabel("Floor", card, new Vector2(0, 0.42f), new Vector2(1, 0.78f), Vector2.zero, Vector2.zero, "1F", 88, Color.white, TextAnchor.MiddleCenter);
-            statusText = UiFactory.CreateLabel("Status", card, new Vector2(0, 0.28f), new Vector2(1, 0.42f), Vector2.zero, Vector2.zero, "대기 상태", 26, new Color(1, 1, 1, 0.75f), TextAnchor.MiddleCenter);
-
-            callButton = UiFactory.CreateButton("Call", card, new Vector2(0.18f, 0.08f), new Vector2(0.82f, 0.24f), Vector2.zero, Vector2.zero, "엘리베이터 호출", new Color(0.18f, 0.45f, 0.9f), 28);
-            callButtonText = callButton.GetComponentInChildren<Text>();
-            callButton.onClick.AddListener(() =>
+            if (titleText != null && WallpadManager.Instance != null)
             {
-                if (WallpadManager.Instance != null && !WallpadManager.Instance.Elevator.isCalled)
+                titleText.text = $"{WallpadManager.Instance.HouseholdFloor}층 호출";
+            }
+
+            if (callButton != null)
+            {
+                callButton.onClick.RemoveAllListeners();
+                callButton.onClick.AddListener(() =>
                 {
-                    WallpadManager.Instance.CallElevator();
-                }
-            });
+                    if (WallpadManager.Instance != null && !WallpadManager.Instance.Elevator.isCalled)
+                    {
+                        WallpadManager.Instance.CallElevator();
+                    }
+                });
+            }
 
             if (WallpadManager.Instance != null)
             {

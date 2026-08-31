@@ -12,13 +12,6 @@ namespace Homepad.UI
 
         private float timer;
 
-        public void Bind(Text time, Text date)
-        {
-            timeText = time;
-            dateText = date;
-            UpdateDateTime();
-        }
-
         private void Start()
         {
             UpdateDateTime();
