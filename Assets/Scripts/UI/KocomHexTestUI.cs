@@ -3,95 +3,104 @@ using System.Collections.Generic;
 using System.Text;
 using Homepad.Core;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace Homepad.UI
 {
     public class KocomHexTestUI : MonoBehaviour
     {
-        [Header("UI References - Tabs")]
+        private static readonly Color DangerColor = new Color(0.78f, 0.28f, 0.24f, 1f);
+        private static readonly Color OkColor = new Color(0.20f, 0.62f, 0.38f, 1f);
+        private static readonly Color TabActiveColor = new Color(0.15f, 0.55f, 0.95f, 1f);
+        private static readonly Color TabInactiveColor = new Color(0.18f, 0.22f, 0.28f, 1f);
+
+        [Header("Serial Connection")]
+        [SerializeField] private InputField portField;
+        [SerializeField] private InputField baudField;
+        [SerializeField] private Text statusText;
+        [SerializeField] private Image statusDot;
+        [SerializeField] private Button wallpadButton;
+        [SerializeField] private Button prevPortButton;
+        [SerializeField] private Button nextPortButton;
+        [SerializeField] private Button refreshButton;
+        [SerializeField] private Button connectButton;
+        [SerializeField] private Button disconnectButton;
+
+        [Header("Tabs")]
         [SerializeField] private Button tabAllButton;
         [SerializeField] private Button tabLightingButton;
         [SerializeField] private Button tabHeatingButton;
         [SerializeField] private Button tabVentButton;
         [SerializeField] private Button tabDoorButton;
-
-        [Header("UI References - Preset List")]
-        [SerializeField] private Transform presetContainer;
-        [SerializeField] private GameObject presetItemPrefab;
         [SerializeField] private Button reloadPresetsButton;
 
-        [Header("UI References - Custom HEX Input")]
+        [Header("Custom HEX Input")]
         [SerializeField] private InputField customHexInput;
         [SerializeField] private Button fixChecksumButton;
         [SerializeField] private Button sendCustomButton;
 
-        [Header("UI References - Log")]
+        [Header("Presets List")]
+        [SerializeField] private ScrollRect presetScrollRect;
+        [SerializeField] private Transform presetContainer;
+        [SerializeField] private GameObject presetItemPrefab;
+
+        [Header("Log Panel")]
         [SerializeField] private Text logText;
         [SerializeField] private ScrollRect logScrollRect;
         [SerializeField] private Button clearLogButton;
 
         private readonly StringBuilder logBuilder = new StringBuilder();
         private int logLineCount;
-        private const int MaxLogLines = 100;
+        private string[] ports = new string[0];
+        private int portIndex;
+        private const int MaxLogLines = 120;
         private HexCategory currentCategory = HexCategory.All;
+        private Font uiFont;
+
+        private void Awake()
+        {
+            AutoResolveUiReferences();
+        }
 
         private void Start()
         {
-            BindUI();
-            HookConnectorEvents();
-            PopulatePresetList(HexCategory.All);
+            uiFont = (statusText != null && statusText.font != null)
+                ? statusText.font
+                : (Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf"));
+
+            BindEvents();
+
+            var connector = GetConnector();
+            if (connector != null)
+            {
+                connector.OnConnectionStatusChanged += UpdateStatus;
+                connector.OnLogMessage += AppendLog;
+                connector.OnPacketReceived += OnPacketReceived;
+                UpdateStatus(connector.IsConnected);
+            }
 
             if (customHexInput != null && string.IsNullOrEmpty(customHexInput.text))
             {
                 customHexInput.text = "AA 55 30 BC 00 0E 00 01 00 00 FF 00 00 00 00 00 00 00 FA 0D 0D";
             }
+
+            RefreshPorts(true);
+            PopulatePresetList(HexCategory.All);
+
+            if (ports.Length > 0)
+            {
+                OnConnectClicked();
+            }
         }
 
         private void OnDestroy()
         {
-            UnhookConnectorEvents();
-        }
-
-        private void BindUI()
-        {
-            Bind(tabAllButton, () => SwitchCategory(HexCategory.All));
-            Bind(tabLightingButton, () => SwitchCategory(HexCategory.Lighting));
-            Bind(tabHeatingButton, () => SwitchCategory(HexCategory.Heating));
-            Bind(tabVentButton, () => SwitchCategory(HexCategory.Ventilation));
-            Bind(tabDoorButton, () => SwitchCategory(HexCategory.DoorLock));
-
-            Bind(reloadPresetsButton, ReloadPresets);
-            Bind(fixChecksumButton, OnFixChecksumClicked);
-            Bind(sendCustomButton, OnSendCustomClicked);
-            Bind(clearLogButton, ClearLog);
-        }
-
-        public void ReloadPresets()
-        {
-            KocomHexPresets.Reload();
-            PopulatePresetList(currentCategory);
-            AppendLog($"<color=#55FF55>[MD 로드 완료] kocom-hex.md 에서 {KocomHexPresets.AllPresets.Count}개 프리셋 로드됨</color>", false);
-        }
-
-        private void HookConnectorEvents()
-        {
             var connector = GetConnector();
-            if (connector != null)
-            {
-                connector.OnLogMessage += OnLogMessageReceived;
-                connector.OnPacketReceived += OnPacketReceived;
-            }
-        }
-
-        private void UnhookConnectorEvents()
-        {
-            var connector = GetConnector();
-            if (connector != null)
-            {
-                connector.OnLogMessage -= OnLogMessageReceived;
-                connector.OnPacketReceived -= OnPacketReceived;
-            }
+            if (connector == null) return;
+            connector.OnConnectionStatusChanged -= UpdateStatus;
+            connector.OnLogMessage -= AppendLog;
+            connector.OnPacketReceived -= OnPacketReceived;
         }
 
         private ArduinoConnector GetConnector()
@@ -103,17 +112,126 @@ namespace Homepad.UI
             return FindObjectOfType<ArduinoConnector>();
         }
 
-        public void SwitchCategory(HexCategory category)
+        private void AutoResolveUiReferences()
+        {
+            if (portField == null) portField = FindUi<InputField>("Port");
+            if (baudField == null) baudField = FindUi<InputField>("Baud");
+            if (statusText == null) statusText = FindUi<Text>("Status");
+            if (statusDot == null) statusDot = FindUi<Image>("StatusDot");
+            if (wallpadButton == null) wallpadButton = FindUi<Button>("WallpadScene");
+            if (prevPortButton == null) prevPortButton = FindUi<Button>("PrevPort");
+            if (nextPortButton == null) nextPortButton = FindUi<Button>("NextPort");
+            if (refreshButton == null) refreshButton = FindUi<Button>("Refresh");
+            if (connectButton == null) connectButton = FindUi<Button>("Connect");
+            if (disconnectButton == null) disconnectButton = FindUi<Button>("Disconnect");
+
+            if (tabAllButton == null) tabAllButton = FindUi<Button>("TabAll");
+            if (tabLightingButton == null) tabLightingButton = FindUi<Button>("TabLighting");
+            if (tabHeatingButton == null) tabHeatingButton = FindUi<Button>("TabHeating");
+            if (tabVentButton == null) tabVentButton = FindUi<Button>("TabVent");
+            if (tabDoorButton == null) tabDoorButton = FindUi<Button>("TabDoor");
+            if (reloadPresetsButton == null) reloadPresetsButton = FindUi<Button>("TabReload");
+
+            if (customHexInput == null) customHexInput = FindUi<InputField>("CustomHexInput");
+            if (fixChecksumButton == null) fixChecksumButton = FindUi<Button>("FixChecksum");
+            if (sendCustomButton == null) sendCustomButton = FindUi<Button>("SendCustom");
+
+            if (presetScrollRect == null) presetScrollRect = FindUi<ScrollRect>("PresetScrollView");
+            if (presetContainer == null && presetScrollRect != null && presetScrollRect.content != null)
+            {
+                presetContainer = presetScrollRect.content;
+            }
+
+            if (logText == null) logText = FindUi<Text>("Log");
+            if (logScrollRect == null) logScrollRect = FindUi<ScrollRect>("LogScrollView");
+            if (clearLogButton == null) clearLogButton = FindUi<Button>("ClearLog");
+        }
+
+        private T FindUi<T>(string objectName) where T : Component
+        {
+            var transforms = GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                if (transforms[i].name == objectName)
+                {
+                    var comp = transforms[i].GetComponent<T>();
+                    if (comp != null) return comp;
+                }
+            }
+            return null;
+        }
+
+        private void BindEvents()
+        {
+            // Serial Controls
+            Bind(wallpadButton, () => SceneManager.LoadScene("WallpadMain"));
+            Bind(prevPortButton, () => CyclePort(-1));
+            Bind(nextPortButton, () => CyclePort(1));
+            Bind(refreshButton, () => RefreshPorts(false));
+            Bind(connectButton, OnConnectClicked);
+            Bind(disconnectButton, () => GetConnector()?.Disconnect());
+
+            // Tabs
+            Bind(tabAllButton, () => SwitchCategory(HexCategory.All, tabAllButton));
+            Bind(tabLightingButton, () => SwitchCategory(HexCategory.Lighting, tabLightingButton));
+            Bind(tabHeatingButton, () => SwitchCategory(HexCategory.Heating, tabHeatingButton));
+            Bind(tabVentButton, () => SwitchCategory(HexCategory.Ventilation, tabVentButton));
+            Bind(tabDoorButton, () => SwitchCategory(HexCategory.DoorLock, tabDoorButton));
+            Bind(reloadPresetsButton, ReloadPresetsFromMarkdown);
+
+            // Custom Hex
+            Bind(fixChecksumButton, OnFixChecksumClicked);
+            Bind(sendCustomButton, OnSendCustomClicked);
+
+            // Log
+            Bind(clearLogButton, ClearLog);
+        }
+
+        public void SwitchCategory(HexCategory category, Button clickedTab = null)
         {
             currentCategory = category;
+            UpdateTabColors(clickedTab ?? GetTabButton(category));
             PopulatePresetList(category);
+        }
+
+        private Button GetTabButton(HexCategory category)
+        {
+            return category switch
+            {
+                HexCategory.All => tabAllButton,
+                HexCategory.Lighting => tabLightingButton,
+                HexCategory.Heating => tabHeatingButton,
+                HexCategory.Ventilation => tabVentButton,
+                HexCategory.DoorLock => tabDoorButton,
+                _ => tabAllButton
+            };
+        }
+
+        private void UpdateTabColors(Button activeTab)
+        {
+            Button[] tabs = { tabAllButton, tabLightingButton, tabHeatingButton, tabVentButton, tabDoorButton };
+            foreach (var tab in tabs)
+            {
+                if (tab == null) continue;
+                var img = tab.GetComponent<Image>();
+                if (img != null)
+                {
+                    img.color = (tab == activeTab) ? TabActiveColor : TabInactiveColor;
+                }
+            }
+        }
+
+        public void ReloadPresetsFromMarkdown()
+        {
+            KocomHexPresets.Reload();
+            PopulatePresetList(currentCategory);
+            AppendLog($"<color=#55FF55>[MD 로드 완료] kocom-hex.md 에서 {KocomHexPresets.AllPresets.Count}개 프리셋 로드됨</color>", false);
         }
 
         private void PopulatePresetList(HexCategory category)
         {
             if (presetContainer == null) return;
 
-            // Clear existing children
             for (int i = presetContainer.childCount - 1; i >= 0; i--)
             {
                 Destroy(presetContainer.GetChild(i).gameObject);
@@ -123,23 +241,22 @@ namespace Homepad.UI
 
             foreach (var preset in presets)
             {
-                GameObject itemObj;
+                GameObject rowObj;
                 if (presetItemPrefab != null)
                 {
-                    itemObj = Instantiate(presetItemPrefab, presetContainer);
+                    rowObj = Instantiate(presetItemPrefab, presetContainer);
                 }
                 else
                 {
-                    // Fallback to runtime UI building if prefab not assigned
-                    itemObj = CreateDefaultPresetItem(presetContainer);
+                    rowObj = CreatePresetRowObject(presetContainer, preset);
                 }
 
-                itemObj.name = $"Preset_{preset.id}";
+                rowObj.name = $"Preset_{preset.id}";
 
-                var titleText = itemObj.transform.Find("Title")?.GetComponent<Text>();
-                var descText = itemObj.transform.Find("Desc")?.GetComponent<Text>();
-                var hexText = itemObj.transform.Find("Hex")?.GetComponent<Text>();
-                var sendBtn = itemObj.GetComponentInChildren<Button>();
+                var titleText = rowObj.transform.Find("Title")?.GetComponent<Text>();
+                var descText = rowObj.transform.Find("Desc")?.GetComponent<Text>();
+                var hexText = rowObj.transform.Find("Hex")?.GetComponent<Text>();
+                var sendBtn = rowObj.GetComponentInChildren<Button>();
 
                 if (titleText != null) titleText.text = preset.title;
                 if (descText != null) descText.text = preset.description;
@@ -147,10 +264,16 @@ namespace Homepad.UI
 
                 if (sendBtn != null)
                 {
-                    var currentPreset = preset;
+                    var p = preset;
                     sendBtn.onClick.RemoveAllListeners();
-                    sendBtn.onClick.AddListener(() => SendPreset(currentPreset));
+                    sendBtn.onClick.AddListener(() => SendPreset(p));
                 }
+            }
+
+            if (presetScrollRect != null)
+            {
+                Canvas.ForceUpdateCanvases();
+                presetScrollRect.verticalNormalizedPosition = 1f;
             }
         }
 
@@ -166,7 +289,7 @@ namespace Homepad.UI
             byte[] bytes = KocomHexPresets.HexStringToBytes(hexString);
             if (bytes == null || bytes.Length == 0)
             {
-                AppendLog("<color=#FF5555>[오류] 잘못된 HEX 문자열입니다.</color>", false);
+                AppendLog("<color=#FF5555>[오류] 유효하지 않은 HEX 문자열입니다.</color>", false);
                 return;
             }
 
@@ -177,7 +300,7 @@ namespace Homepad.UI
             }
             else
             {
-                AppendLog($"<color=#FFAA55>[시뮬레이션/직접전송] {KocomProtocol.ToHexString(bytes)}</color>", false);
+                AppendLog($"<color=#FFAA55>[시뮬레이션 전송] {KocomProtocol.ToHexString(bytes)}</color>", false);
             }
         }
 
@@ -211,13 +334,8 @@ namespace Homepad.UI
             }
             else
             {
-                AppendLog($"<color=#FFFF55>[RX 파싱불가] {hexStr}</color>", false);
+                AppendLog($"<color=#FFFF55>[RX 알수없는 패킷] {hexStr}</color>", false);
             }
-        }
-
-        private void OnLogMessageReceived(string message, bool isTx)
-        {
-            AppendLog(message, isTx);
         }
 
         public void ClearLog()
@@ -229,32 +347,98 @@ namespace Homepad.UI
 
         private void AppendLog(string message, bool isTx)
         {
+            string color = isTx ? "#55AAFF" : "#CCCCCC";
             string time = DateTime.Now.ToString("HH:mm:ss.fff");
-            string line = $"<color=#888888>[{time}]</color> {message}\n";
+            string line = $"<color=#888888>[{time}]</color> <color={color}>{message}</color>\n";
 
             logBuilder.Append(line);
             logLineCount++;
 
             if (logLineCount > MaxLogLines)
             {
-                string str = logBuilder.ToString();
-                int idx = str.IndexOf('\n');
-                if (idx >= 0)
+                string current = logBuilder.ToString();
+                int newline = current.IndexOf('\n');
+                if (newline >= 0)
                 {
-                    logBuilder.Remove(0, idx + 1);
+                    logBuilder.Remove(0, newline + 1);
                     logLineCount--;
                 }
             }
 
-            if (logText != null)
-            {
-                logText.text = logBuilder.ToString();
-            }
+            if (logText != null) logText.text = logBuilder.ToString();
 
             if (logScrollRect != null)
             {
                 Canvas.ForceUpdateCanvases();
                 logScrollRect.verticalNormalizedPosition = 0f;
+            }
+        }
+
+        private void RefreshPorts(bool preferSaved)
+        {
+            ports = ArduinoConnector.ListSerialPorts();
+            string saved = PlayerPrefs.GetString("Homepad.SerialPort", "");
+            if (ports.Length == 0)
+            {
+                if (preferSaved && !string.IsNullOrEmpty(saved) && portField != null)
+                {
+                    portField.text = saved;
+                }
+
+                AppendLog("[시스템] USB 시리얼 포트를 찾지 못했습니다. 아두이노를 다시 꽂거나 IDE 시리얼 모니터를 닫은 뒤 새로고침하세요.", false);
+                return;
+            }
+
+            portIndex = 0;
+            if (preferSaved)
+            {
+                int found = Array.IndexOf(ports, saved);
+                if (found >= 0) portIndex = found;
+            }
+
+            if (portField != null) portField.text = ports[portIndex];
+            AppendLog($"[시스템] 시리얼 포트 {ports.Length}개: {string.Join(", ", ports)}", false);
+        }
+
+        private void CyclePort(int delta)
+        {
+            if (ports == null || ports.Length == 0)
+            {
+                RefreshPorts(false);
+                return;
+            }
+
+            portIndex = (portIndex + delta + ports.Length) % ports.Length;
+            if (portField != null) portField.text = ports[portIndex];
+        }
+
+        private void OnConnectClicked()
+        {
+            var connector = GetConnector();
+            if (connector == null) return;
+            string port = portField != null ? portField.text.Trim() : "";
+            if (string.IsNullOrEmpty(port))
+            {
+                AppendLog("[오류] 시리얼 포트가 비어 있습니다. 새로고침 후 포트를 선택하세요.", false);
+                return;
+            }
+
+            int baud = 115200;
+            if (baudField != null) int.TryParse(baudField.text.Trim(), out baud);
+            connector.SetSerialTarget(port, baud);
+        }
+
+        private void UpdateStatus(bool isConnected)
+        {
+            if (statusText != null)
+            {
+                statusText.text = isConnected ? "시리얼 연결됨" : "연결 안 됨";
+                statusText.color = isConnected ? OkColor : DangerColor;
+            }
+
+            if (statusDot != null)
+            {
+                statusDot.color = isConnected ? OkColor : DangerColor;
             }
         }
 
@@ -265,71 +449,78 @@ namespace Homepad.UI
             button.onClick.AddListener(action);
         }
 
-        private GameObject CreateDefaultPresetItem(Transform parent)
+        private GameObject CreatePresetRowObject(Transform parent, HexPreset preset)
         {
-            GameObject item = new GameObject("PresetItem", typeof(RectTransform), typeof(Image));
-            item.transform.SetParent(parent, false);
-            var img = item.GetComponent<Image>();
-            img.color = new Color(0.18f, 0.22f, 0.28f, 0.95f);
+            GameObject row = new GameObject("PresetRow", typeof(RectTransform), typeof(Image));
+            row.transform.SetParent(parent, false);
+            var rowImg = row.GetComponent<Image>();
+            rowImg.color = new Color(0.14f, 0.17f, 0.23f, 0.95f);
 
-            var rt = item.GetComponent<RectTransform>();
-            rt.sizeDelta = new Vector2(0, 70);
+            var rowRt = row.GetComponent<RectTransform>();
+            rowRt.sizeDelta = new Vector2(0, 58);
 
             // Title
             var titleGo = new GameObject("Title", typeof(RectTransform), typeof(Text));
-            titleGo.transform.SetParent(item.transform, false);
+            titleGo.transform.SetParent(row.transform, false);
             var title = titleGo.GetComponent<Text>();
-            title.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
-            title.fontSize = 15;
+            title.font = uiFont;
+            title.fontSize = 14;
             title.fontStyle = FontStyle.Bold;
+            title.text = preset.title;
             title.color = Color.white;
-            var titleRt = titleGo.GetComponent<RectTransform>();
-            titleRt.anchorMin = new Vector2(0, 0.5f);
-            titleRt.anchorMax = new Vector2(0.7f, 1f);
-            titleRt.offsetMin = new Vector2(12, 0);
-            titleRt.offsetMax = new Vector2(-10, -8);
             title.alignment = TextAnchor.MiddleLeft;
 
-            // Hex / Desc
+            var titleRt = titleGo.GetComponent<RectTransform>();
+            titleRt.anchorMin = new Vector2(0f, 0.5f);
+            titleRt.anchorMax = new Vector2(0.78f, 1f);
+            titleRt.offsetMin = new Vector2(10, 0);
+            titleRt.offsetMax = new Vector2(-5, -4);
+
+            // Hex Text
             var hexGo = new GameObject("Hex", typeof(RectTransform), typeof(Text));
-            hexGo.transform.SetParent(item.transform, false);
-            var hex = hexGo.GetComponent<Text>();
-            hex.font = title.font;
-            hex.fontSize = 12;
-            hex.color = new Color(0.6f, 0.8f, 1f, 1f);
+            hexGo.transform.SetParent(row.transform, false);
+            var hexText = hexGo.GetComponent<Text>();
+            hexText.font = uiFont;
+            hexText.fontSize = 11;
+            hexText.text = preset.hexString;
+            hexText.color = new Color(0.55f, 0.78f, 1f, 1f);
+            hexText.alignment = TextAnchor.MiddleLeft;
+
             var hexRt = hexGo.GetComponent<RectTransform>();
-            hexRt.anchorMin = new Vector2(0, 0f);
-            hexRt.anchorMax = new Vector2(0.7f, 0.5f);
-            hexRt.offsetMin = new Vector2(12, 8);
-            hexRt.offsetMax = new Vector2(-10, 0);
-            hex.alignment = TextAnchor.MiddleLeft;
+            hexRt.anchorMin = new Vector2(0f, 0f);
+            hexRt.anchorMax = new Vector2(0.78f, 0.5f);
+            hexRt.offsetMin = new Vector2(10, 4);
+            hexRt.offsetMax = new Vector2(-5, 0);
 
             // Send Button
-            var btnGo = new GameObject("SendButton", typeof(RectTransform), typeof(Image), typeof(Button));
-            btnGo.transform.SetParent(item.transform, false);
-            var btnImg = btnGo.GetComponent<Image>();
-            btnImg.color = new Color(0.15f, 0.55f, 0.9f, 1f);
-            var btnRt = btnGo.GetComponent<RectTransform>();
-            btnRt.anchorMin = new Vector2(0.75f, 0.15f);
-            btnRt.anchorMax = new Vector2(0.98f, 0.85f);
-            btnRt.offsetMin = Vector2.zero;
-            btnRt.offsetMax = Vector2.zero;
+            GameObject sendBtnGo = new GameObject("SendButton", typeof(RectTransform), typeof(Image), typeof(Button));
+            sendBtnGo.transform.SetParent(row.transform, false);
+            var btnImg = sendBtnGo.GetComponent<Image>();
+            btnImg.color = new Color(0.18f, 0.52f, 0.88f, 1f);
+
+            var sendRt = sendBtnGo.GetComponent<RectTransform>();
+            sendRt.anchorMin = new Vector2(0.80f, 0.15f);
+            sendRt.anchorMax = new Vector2(0.98f, 0.85f);
+            sendRt.offsetMin = Vector2.zero;
+            sendRt.offsetMax = Vector2.zero;
 
             var btnTextGo = new GameObject("Text", typeof(RectTransform), typeof(Text));
-            btnTextGo.transform.SetParent(btnGo.transform, false);
+            btnTextGo.transform.SetParent(sendBtnGo.transform, false);
             var btnText = btnTextGo.GetComponent<Text>();
-            btnText.font = title.font;
-            btnText.fontSize = 14;
+            btnText.font = uiFont;
+            btnText.fontSize = 13;
+            btnText.fontStyle = FontStyle.Bold;
             btnText.text = "전송";
             btnText.alignment = TextAnchor.MiddleCenter;
             btnText.color = Color.white;
+
             var btnTextRt = btnTextGo.GetComponent<RectTransform>();
             btnTextRt.anchorMin = Vector2.zero;
             btnTextRt.anchorMax = Vector2.one;
             btnTextRt.offsetMin = Vector2.zero;
             btnTextRt.offsetMax = Vector2.zero;
 
-            return item;
+            return row;
         }
     }
 }
