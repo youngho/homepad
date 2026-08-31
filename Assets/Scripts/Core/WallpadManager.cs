@@ -5,6 +5,7 @@ using UnityEngine;
 
 namespace Homepad.Core
 {
+    [DefaultExecutionOrder(-100)]
     public class WallpadManager : MonoBehaviour
     {
         public static WallpadManager Instance { get; private set; }

@@ -2630,6 +2630,33 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: dd35dcb8e059947bda268473d47b6265, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Homepad.UI.SerialTestUI
+  portField: {fileID: 731643}
+  baudField: {fileID: 142294633}
+  statusText: {fileID: 459826363}
+  logText: {fileID: 1128108714}
+  statusDot: {fileID: 342784396}
+  wallpadButton: {fileID: 610373361}
+  prevPortButton: {fileID: 1404706053}
+  nextPortButton: {fileID: 952890009}
+  refreshButton: {fileID: 291156326}
+  connectButton: {fileID: 1979589105}
+  disconnectButton: {fileID: 1244549197}
+  commandButtons:
+  - {fileID: 1567863006}
+  - {fileID: 712455118}
+  - {fileID: 1338012044}
+  - {fileID: 1017643648}
+  - {fileID: 1489648033}
+  - {fileID: 1146974050}
+  - {fileID: 1230167329}
+  - {fileID: 1166531566}
+  - {fileID: 810839256}
+  - {fileID: 1455287894}
+  - {fileID: 1103298035}
+  - {fileID: 266893423}
+  - {fileID: 1108828048}
+  - {fileID: 1507858974}
+  - {fileID: 1293810771}
 --- !u!114 &1060709562
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2978,7 +3005,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Homepad.Core.WallpadManager
   config: {fileID: 0}
-  connector: {fileID: 0}
+  connector: {fileID: 1107520451}
   lights: []
   heatingRooms: []
   gas:

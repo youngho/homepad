@@ -30,6 +30,48 @@ namespace Homepad.UI
         private int portIndex;
         private const int MaxLogLines = 80;
 
+        private void Awake()
+        {
+            ResolveUi();
+        }
+
+        private void ResolveUi()
+        {
+            if (portField == null) portField = FindUi<InputField>("Port");
+            if (baudField == null) baudField = FindUi<InputField>("Baud");
+            if (statusText == null) statusText = FindUi<Text>("Status");
+            if (logText == null) logText = FindUi<Text>("Log");
+            if (statusDot == null) statusDot = FindUi<Image>("StatusDot");
+            if (wallpadButton == null) wallpadButton = FindUi<Button>("WallpadScene");
+            if (prevPortButton == null) prevPortButton = FindUi<Button>("PrevPort");
+            if (nextPortButton == null) nextPortButton = FindUi<Button>("NextPort");
+            if (refreshButton == null) refreshButton = FindUi<Button>("Refresh");
+            if (connectButton == null) connectButton = FindUi<Button>("Connect");
+            if (disconnectButton == null) disconnectButton = FindUi<Button>("Disconnect");
+
+            if (commandButtons == null || commandButtons.Length == 0)
+            {
+                commandButtons = new Button[15];
+                for (int i = 0; i < commandButtons.Length; i++)
+                {
+                    commandButtons[i] = FindUi<Button>("Cmd" + i);
+                }
+            }
+        }
+
+        private T FindUi<T>(string objectName) where T : Component
+        {
+            var transforms = GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                if (transforms[i].name != objectName) continue;
+                var component = transforms[i].GetComponent<T>();
+                if (component != null) return component;
+            }
+
+            return null;
+        }
+
         private void Start()
         {
             BindButtons();
@@ -42,6 +84,10 @@ namespace Homepad.UI
             }
 
             RefreshPorts(true);
+            if (ports.Length > 0)
+            {
+                OnConnectClicked();
+            }
         }
 
         private void OnDestroy()
@@ -123,7 +169,7 @@ namespace Homepad.UI
                     portField.text = saved;
                 }
 
-                AppendLog($"[시스템] 시리얼 포트 {ports.Length}개 발견", false);
+                AppendLog("[시스템] USB 시리얼 포트를 찾지 못했습니다. 아두이노를 다시 꽂거나 IDE 시리얼 모니터를 닫은 뒤 새로고침하세요.", false);
                 return;
             }
 
@@ -154,6 +200,12 @@ namespace Homepad.UI
         {
             if (WallpadManager.Instance == null || WallpadManager.Instance.Connector == null) return;
             string port = portField != null ? portField.text.Trim() : "";
+            if (string.IsNullOrEmpty(port))
+            {
+                AppendLog("[오류] 시리얼 포트가 비어 있습니다. 새로고침 후 포트를 선택하세요.", false);
+                return;
+            }
+
             int baud = 115200;
             if (baudField != null) int.TryParse(baudField.text.Trim(), out baud);
             WallpadManager.Instance.Connector.SetSerialTarget(port, baud);

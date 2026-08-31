@@ -234,6 +234,7 @@ namespace Homepad.Core
 
                     var port = new NativeSerialPort(serialPortName, serialBaudRate);
                     port.Open();
+                    Thread.Sleep(2000);
                     serialPort = port;
                     isConnected = true;
 

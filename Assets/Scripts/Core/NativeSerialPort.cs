@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Homepad.Core
 {
@@ -119,8 +120,24 @@ namespace Homepad.Core
 
         private void OpenUnix()
         {
-            ConfigureUnixPort(portName, baudRate);
-            unixStream = new FileStream(portName, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite, 1, false);
+            Exception lastError = null;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                try
+                {
+                    ConfigureUnixPort(portName, baudRate);
+                    unixStream = new FileStream(portName, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite, 1, false);
+                    return;
+                }
+                catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+                {
+                    lastError = ex;
+                    Close();
+                    Thread.Sleep(400);
+                }
+            }
+
+            throw new IOException($"포트를 열 수 없습니다: {portName} ({lastError?.Message})");
         }
 
         private static void ConfigureUnixPort(string path, int baud)
@@ -160,25 +177,129 @@ namespace Homepad.Core
 
         private static string[] GetUnixPortNames()
         {
-            var names = new List<string>();
-            if (!Directory.Exists("/dev")) return names.ToArray();
+            var found = new HashSet<string>(StringComparer.Ordinal);
+            AddUnixPortsFromEntries(found);
+            AddUnixPortsFromGlobs(found);
+            AddUnixPortsFromShell(found);
 
-            foreach (string path in Directory.GetFiles("/dev"))
+            var names = new List<string>();
+            foreach (string path in found)
             {
-                string file = Path.GetFileName(path);
-                if (file.StartsWith("cu.Bluetooth", StringComparison.Ordinal)) continue;
-                if (file.StartsWith("cu.usb", StringComparison.Ordinal)
-                    || file.StartsWith("cu.wchusb", StringComparison.Ordinal)
-                    || file.StartsWith("cu.SLAB", StringComparison.Ordinal)
-                    || file.StartsWith("ttyUSB", StringComparison.Ordinal)
-                    || file.StartsWith("ttyACM", StringComparison.Ordinal))
+                if (IsUnixSerialCandidate(Path.GetFileName(path)))
                 {
                     names.Add(path);
                 }
             }
 
-            names.Sort(StringComparer.Ordinal);
+            names.Sort(CompareUnixPorts);
             return names.ToArray();
+        }
+
+        private static bool IsUnixSerialCandidate(string file)
+        {
+            if (string.IsNullOrEmpty(file)) return false;
+            if (file.StartsWith("cu.Bluetooth", StringComparison.Ordinal)) return false;
+            if (file.StartsWith("tty.Bluetooth", StringComparison.Ordinal)) return false;
+
+            return file.StartsWith("cu.usb", StringComparison.Ordinal)
+                || file.StartsWith("cu.wch", StringComparison.Ordinal)
+                || file.StartsWith("cu.SLAB", StringComparison.Ordinal)
+                || file.StartsWith("ttyUSB", StringComparison.Ordinal)
+                || file.StartsWith("ttyACM", StringComparison.Ordinal);
+        }
+
+        private static int CompareUnixPorts(string a, string b)
+        {
+            int cmp = UnixPortRank(a).CompareTo(UnixPortRank(b));
+            return cmp != 0 ? cmp : string.CompareOrdinal(a, b);
+        }
+
+        private static int UnixPortRank(string path)
+        {
+            string file = Path.GetFileName(path);
+            if (file.StartsWith("cu.usbmodem", StringComparison.Ordinal)) return 0;
+            if (file.StartsWith("cu.usbserial", StringComparison.Ordinal)) return 1;
+            if (file.StartsWith("cu.usb", StringComparison.Ordinal)) return 2;
+            if (file.StartsWith("cu.wch", StringComparison.Ordinal)) return 3;
+            if (file.StartsWith("cu.SLAB", StringComparison.Ordinal)) return 4;
+            return 10;
+        }
+
+        private static void AddUnixPortsFromEntries(HashSet<string> names)
+        {
+            try
+            {
+                if (!Directory.Exists("/dev")) return;
+                foreach (string path in Directory.GetFileSystemEntries("/dev"))
+                {
+                    names.Add(path);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private static void AddUnixPortsFromGlobs(HashSet<string> names)
+        {
+            string[] patterns =
+            {
+                "cu.usb*",
+                "cu.wch*",
+                "cu.SLAB*",
+                "ttyUSB*",
+                "ttyACM*"
+            };
+
+            foreach (string pattern in patterns)
+            {
+                try
+                {
+                    foreach (string path in Directory.GetFileSystemEntries("/dev", pattern))
+                    {
+                        names.Add(path);
+                    }
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        private static void AddUnixPortsFromShell(HashSet<string> names)
+        {
+            try
+            {
+                var info = new ProcessStartInfo
+                {
+                    FileName = "/bin/bash",
+                    Arguments = "-c \"shopt -s nullglob; ls -1 /dev/cu.usb* /dev/cu.wch* /dev/cu.SLAB* /dev/ttyUSB* /dev/ttyACM* 2>/dev/null\"",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(info);
+                if (process == null) return;
+
+                string output = process.StandardOutput.ReadToEnd();
+                if (!process.WaitForExit(1500))
+                {
+                    try { process.Kill(); } catch { }
+                    return;
+                }
+
+                foreach (string line in output.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string path = line.Trim();
+                    if (path.IndexOf('*') >= 0) continue;
+                    names.Add(path);
+                }
+            }
+            catch
+            {
+            }
         }
 
         private static string[] GetWindowsPortNames()

@@ -26,6 +26,7 @@ namespace Homepad.Core
         public const ushort DeviceGas = 0x002C;
         public const ushort DeviceVentilation = 0x0048;
         public const ushort DeviceElevator = 0x0044;
+        public const ushort DeviceDoorLock = 0x0033;
 
         public const byte LightOn = 0xFF;
         public const byte LightOff = 0x00;
@@ -62,7 +63,8 @@ namespace Homepad.Core
                 || address == DeviceHeating
                 || address == DeviceGas
                 || address == DeviceVentilation
-                || address == DeviceElevator;
+                || address == DeviceElevator
+                || address == DeviceDoorLock;
         }
 
         public static byte[] BuildFrame(ushort destination, ushort room, byte[] value8, ushort source = AddressWallpad, ushort type = TypeTransmit)
@@ -216,6 +218,107 @@ namespace Homepad.Core
                 if (i > 0) sb.Append(' ');
                 sb.Append(bytes[i].ToString("X2"));
             }
+            return sb.ToString();
+        }
+
+        public static string DecodeFrame(Frame frame)
+        {
+            string typeStr = frame.type switch
+            {
+                TypeTransmit => "요청(REQ)",
+                TypeReport => "상태(STA)",
+                0x30BD => "재전송1(30BD)",
+                0x30BE => "재전송2(30BE)",
+                _ => $"타입(0x{frame.type:X4})"
+            };
+
+            string roomStr = frame.room switch
+            {
+                0x0001 => "거실",
+                0x0101 => "방1",
+                0x0201 => "방2",
+                0x0301 => "방3",
+                _ => $"방(0x{frame.room:X4})"
+            };
+
+            ushort dev = frame.DeviceAddress;
+            string devName = dev switch
+            {
+                DeviceLight => "조명",
+                DeviceHeating => "난방",
+                DeviceVentilation => "환기",
+                DeviceDoorLock => "도어락",
+                DeviceGas => "가스",
+                DeviceElevator => "엘리베이터",
+                AddressWallpad => "월패드",
+                _ => $"장치(0x{dev:X4})"
+            };
+
+            var sb = new StringBuilder();
+            sb.Append($"[{typeStr}] {devName} ({roomStr}) ");
+
+            if (dev == DeviceLight)
+            {
+                var onLights = new List<int>();
+                for (int i = 0; i < 8; i++)
+                {
+                    if (frame.value != null && i < frame.value.Length && frame.value[i] == LightOn)
+                    {
+                        onLights.Add(i + 1);
+                    }
+                }
+                if (onLights.Count == 0) sb.Append("전체 OFF");
+                else sb.Append($"스위치 ON: [{string.Join(", ", onLights)}]");
+            }
+            else if (dev == DeviceHeating)
+            {
+                if (frame.value != null && frame.value.Length >= 4)
+                {
+                    byte m0 = frame.value[0];
+                    byte m1 = frame.value[1];
+                    byte setTemp = frame.value[2];
+                    byte curTemp = frame.value[3];
+
+                    string mode = (m0 == 0x11 && m1 == 0x01) ? "외출" :
+                                  (m0 == 0x11 && m1 == 0x00) ? "가동" :
+                                  (m0 == 0x01 && m1 == 0x00) ? "정지" : $"모드(0x{m0:X2}{m1:X2})";
+
+                    sb.Append($"{mode}, 설정 {setTemp}°C");
+                    if (curTemp > 0) sb.Append($", 현재 {curTemp}°C");
+                }
+            }
+            else if (dev == DeviceVentilation)
+            {
+                if (frame.value != null && frame.value.Length >= 3)
+                {
+                    byte v0 = frame.value[0];
+                    byte v2 = frame.value[2];
+
+                    if (v0 == 0x00) sb.Append("OFF (정지)");
+                    else if (v0 == 0x11) sb.Append("ON (가동)");
+                    else if (v0 == 0x88)
+                    {
+                        string speed = v2 switch
+                        {
+                            0x40 => "1단 (약)",
+                            0x80 => "2단 (중)",
+                            0xC0 => "3단 (강)",
+                            _ => $"풍량(0x{v2:X2})"
+                        };
+                        sb.Append($"풍량 {speed}");
+                    }
+                }
+            }
+            else if (dev == DeviceDoorLock)
+            {
+                if (frame.source == AddressWallpad && frame.destination == DeviceDoorLock)
+                    sb.Append("문열림 요청 (트리거)");
+                else if (frame.source == DeviceDoorLock && frame.destination == AddressWallpad)
+                    sb.Append("도어락 상태 보고");
+                else
+                    sb.Append("도어락 응답/신호");
+            }
+
             return sb.ToString();
         }
 
