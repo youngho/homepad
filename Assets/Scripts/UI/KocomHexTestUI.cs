@@ -50,6 +50,9 @@ namespace Homepad.UI
         [SerializeField] private ScrollRect logScrollRect;
         [SerializeField] private Button clearLogButton;
 
+        [Header("Font & Appearance")]
+        [SerializeField] private Font customFont;
+
         private readonly StringBuilder logBuilder = new StringBuilder();
         private int logLineCount;
         private string[] ports = new string[0];
@@ -65,9 +68,11 @@ namespace Homepad.UI
 
         private void Start()
         {
-            uiFont = (statusText != null && statusText.font != null)
-                ? statusText.font
-                : (Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf"));
+            uiFont = customFont != null
+                ? customFont
+                : (statusText != null && statusText.font != null)
+                    ? statusText.font
+                    : (Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf"));
 
             BindEvents();
 
@@ -457,23 +462,23 @@ namespace Homepad.UI
             rowImg.color = new Color(0.14f, 0.17f, 0.23f, 0.95f);
 
             var rowRt = row.GetComponent<RectTransform>();
-            rowRt.sizeDelta = new Vector2(0, 58);
+            rowRt.sizeDelta = new Vector2(0, 68);
 
             // Title
             var titleGo = new GameObject("Title", typeof(RectTransform), typeof(Text));
             titleGo.transform.SetParent(row.transform, false);
             var title = titleGo.GetComponent<Text>();
             title.font = uiFont;
-            title.fontSize = 14;
+            title.fontSize = 20;
             title.fontStyle = FontStyle.Bold;
             title.text = preset.title;
             title.color = Color.white;
             title.alignment = TextAnchor.MiddleLeft;
 
             var titleRt = titleGo.GetComponent<RectTransform>();
-            titleRt.anchorMin = new Vector2(0f, 0.5f);
+            titleRt.anchorMin = new Vector2(0f, 0.45f);
             titleRt.anchorMax = new Vector2(0.78f, 1f);
-            titleRt.offsetMin = new Vector2(10, 0);
+            titleRt.offsetMin = new Vector2(14, 0);
             titleRt.offsetMax = new Vector2(-5, -4);
 
             // Hex Text
@@ -481,15 +486,15 @@ namespace Homepad.UI
             hexGo.transform.SetParent(row.transform, false);
             var hexText = hexGo.GetComponent<Text>();
             hexText.font = uiFont;
-            hexText.fontSize = 11;
+            hexText.fontSize = 15;
             hexText.text = preset.hexString;
             hexText.color = new Color(0.55f, 0.78f, 1f, 1f);
             hexText.alignment = TextAnchor.MiddleLeft;
 
             var hexRt = hexGo.GetComponent<RectTransform>();
             hexRt.anchorMin = new Vector2(0f, 0f);
-            hexRt.anchorMax = new Vector2(0.78f, 0.5f);
-            hexRt.offsetMin = new Vector2(10, 4);
+            hexRt.anchorMax = new Vector2(0.78f, 0.45f);
+            hexRt.offsetMin = new Vector2(14, 4);
             hexRt.offsetMax = new Vector2(-5, 0);
 
             // Send Button
@@ -499,8 +504,8 @@ namespace Homepad.UI
             btnImg.color = new Color(0.18f, 0.52f, 0.88f, 1f);
 
             var sendRt = sendBtnGo.GetComponent<RectTransform>();
-            sendRt.anchorMin = new Vector2(0.80f, 0.15f);
-            sendRt.anchorMax = new Vector2(0.98f, 0.85f);
+            sendRt.anchorMin = new Vector2(0.80f, 0.12f);
+            sendRt.anchorMax = new Vector2(0.98f, 0.88f);
             sendRt.offsetMin = Vector2.zero;
             sendRt.offsetMax = Vector2.zero;
 
@@ -508,7 +513,7 @@ namespace Homepad.UI
             btnTextGo.transform.SetParent(sendBtnGo.transform, false);
             var btnText = btnTextGo.GetComponent<Text>();
             btnText.font = uiFont;
-            btnText.fontSize = 13;
+            btnText.fontSize = 18;
             btnText.fontStyle = FontStyle.Bold;
             btnText.text = "전송";
             btnText.alignment = TextAnchor.MiddleCenter;
