@@ -13,10 +13,15 @@ namespace Homepad.UI
 {
     public class KocomHexTestUI : MonoBehaviour
     {
-        private static readonly Color DangerColor = new Color(0.78f, 0.28f, 0.24f, 1f);
-        private static readonly Color OkColor = new Color(0.20f, 0.62f, 0.38f, 1f);
-        private static readonly Color TabActiveColor = new Color(0.15f, 0.55f, 0.95f, 1f);
-        private static readonly Color TabInactiveColor = new Color(0.18f, 0.22f, 0.28f, 1f);
+        private static readonly Color PresetRowA = new Color(0.165f, 0.176f, 0.204f, 1f);
+        private static readonly Color PresetRowB = new Color(0.141f, 0.153f, 0.176f, 1f);
+        private static readonly Color TabActiveColor = new Color(0.255f, 0.278f, 0.318f, 1f);
+        private static readonly Color TabInactiveColor = new Color(1f, 1f, 1f, 0f);
+        private static readonly Color TabInactiveTextColor = new Color(0.62f, 0.65f, 0.71f, 1f);
+        private static readonly Color SoftSendBlue = new Color(0.455f, 0.612f, 0.773f, 1f);
+        private static readonly Color MutedGreen = new Color(0.337f, 0.588f, 0.408f, 1f);
+        private static readonly Color MutedRed = new Color(0.753f, 0.337f, 0.337f, 1f);
+        private static readonly Color HexCodeCyan = new Color(0.43f, 0.65f, 0.84f, 1f);
 
         [Header("Serial Connection")]
         [SerializeField] private InputField portField;
@@ -55,6 +60,7 @@ namespace Homepad.UI
 
         [Header("Font & Appearance")]
         [SerializeField] private Font customFont;
+        [SerializeField] private Sprite roundedSprite;
 
         private readonly StringBuilder logBuilder = new StringBuilder();
         private int logLineCount;
@@ -91,12 +97,10 @@ namespace Homepad.UI
                 customHexInput.text = "AA 55 30 BC 00 0E 00 01 00 00 FF 00 00 00 00 00 00 00 FA 0D 0D";
             }
 
-            var header = FindUi<Text>("LogHeader");
-            if (header != null) header.text = "시리얼 로그 (USB · 송수신)";
-
             RefreshPorts(true);
             lastSeenPorts = ports ?? new string[0];
             PopulatePresetList(HexCategory.All);
+            SwitchCategory(HexCategory.All, tabAllButton);
             UiInputBootstrap.GiveMouseToUi();
 
             if (ports.Length > 0)
@@ -106,6 +110,7 @@ namespace Homepad.UI
 
             StartCoroutine(WatchUsbRoutine());
         }
+
 
         private void Update()
         {
@@ -240,7 +245,7 @@ namespace Homepad.UI
                 {
                     if (IndexOfPort(lastSeenPorts, now[i]) < 0)
                     {
-                        AppendLog($"<color=#55FF55>[USB 감지]</color> {now[i]}", false);
+                        AppendLog($"<color=#5CAE7C>[USB 감지]</color> {now[i]}", false);
                         if (portField != null)
                         {
                             portField.text = now[i];
@@ -255,7 +260,7 @@ namespace Homepad.UI
                 {
                     if (IndexOfPort(now, lastSeenPorts[i]) < 0)
                     {
-                        AppendLog($"<color=#FFAA55>[USB 해제]</color> {lastSeenPorts[i]}", false);
+                        AppendLog($"<color=#CF5C5C>[USB 해제]</color> {lastSeenPorts[i]}", false);
                         var serial = connector;
                         if (serial != null && serial.IsConnected && serial.SerialPortName == lastSeenPorts[i])
                         {
@@ -380,14 +385,21 @@ namespace Homepad.UI
 
         private void UpdateTabColors(Button activeTab)
         {
-            Button[] tabs = { tabAllButton, tabLightingButton, tabHeatingButton, tabVentButton, tabDoorButton };
+            Button[] tabs = { tabAllButton, tabLightingButton, tabHeatingButton, tabVentButton, tabDoorButton, reloadPresetsButton };
             foreach (var tab in tabs)
             {
                 if (tab == null) continue;
                 var img = tab.GetComponent<Image>();
+                var txt = tab.GetComponentInChildren<Text>();
+                bool isActive = tab == activeTab;
                 if (img != null)
                 {
-                    img.color = (tab == activeTab) ? TabActiveColor : TabInactiveColor;
+                    img.color = isActive ? TabActiveColor : TabInactiveColor;
+                }
+                if (txt != null)
+                {
+                    txt.color = isActive ? Color.white : TabInactiveTextColor;
+                    txt.fontStyle = FontStyle.Bold;
                 }
             }
         }
@@ -396,7 +408,7 @@ namespace Homepad.UI
         {
             KocomHexPresets.Reload();
             PopulatePresetList(currentCategory);
-            AppendLog($"<color=#55FF55>[MD 로드 완료] kocom-hex.md 에서 {KocomHexPresets.AllPresets.Count}개 프리셋 로드됨</color>", false);
+            AppendLog($"<color=#5CAE7C>[MD 로드 완료] kocom-hex.md 에서 {KocomHexPresets.AllPresets.Count}개 프리셋 로드됨</color>", false);
         }
 
         private void PopulatePresetList(HexCategory category)
@@ -406,10 +418,12 @@ namespace Homepad.UI
             var vg = presetContainer.GetComponent<VerticalLayoutGroup>();
             if (vg != null)
             {
+                vg.padding = new RectOffset(8, 8, 8, 8);
                 vg.childControlWidth = true;
                 vg.childControlHeight = true;
                 vg.childForceExpandWidth = true;
                 vg.childForceExpandHeight = false;
+                vg.spacing = 6f;
             }
 
             for (int i = presetContainer.childCount - 1; i >= 0; i--)
@@ -418,6 +432,7 @@ namespace Homepad.UI
             }
 
             var presets = KocomHexPresets.GetPresetsByCategory(category);
+            int rowIndex = 0;
 
             foreach (var preset in presets)
             {
@@ -428,9 +443,10 @@ namespace Homepad.UI
                 }
                 else
                 {
-                    rowObj = CreatePresetRowObject(presetContainer, preset);
+                    rowObj = CreatePresetRowObject(presetContainer, preset, rowIndex);
                 }
 
+                rowIndex++;
                 rowObj.name = $"Preset_{preset.id}";
 
                 var titleText = rowObj.transform.Find("Title")?.GetComponent<Text>();
@@ -459,7 +475,7 @@ namespace Homepad.UI
         public void SendPreset(HexPreset preset)
         {
             if (preset == null) return;
-            AppendLog($"<color=#55AAFF>[TX 요청]</color> <b>{preset.title}</b>", false);
+            AppendLog($"<b>{preset.title}</b>\n              <color=#6DA6D6>{preset.hexString}</color>", true);
             SendRawHex(preset.hexString);
         }
 
@@ -468,7 +484,7 @@ namespace Homepad.UI
             byte[] bytes = KocomHexPresets.HexStringToBytes(hexString);
             if (bytes == null || bytes.Length == 0)
             {
-                AppendLog("<color=#FF5555>[오류] 유효하지 않은 HEX 문자열입니다.</color>", false);
+                AppendLog("<color=#CF5C5C>[오류] 유효하지 않은 HEX 문자열입니다.</color>", false);
                 return;
             }
 
@@ -479,7 +495,7 @@ namespace Homepad.UI
             }
             else
             {
-                AppendLog($"<color=#FFAA55>[시뮬레이션 전송] {KocomProtocol.ToHexString(bytes)}</color>", false);
+                AppendLog($"<color=#5A98D4>[시뮬레이션 전송] {KocomProtocol.ToHexString(bytes)}</color>", false);
             }
         }
 
@@ -488,7 +504,7 @@ namespace Homepad.UI
             if (customHexInput == null) return;
             string corrected = KocomHexPresets.RecalculateChecksum(customHexInput.text);
             customHexInput.text = corrected;
-            AppendLog($"<color=#AAAAAA>[체크섬 계산 완료] {corrected}</color>", false);
+            AppendLog($"<color=#9EA6B5>[체크섬 계산 완료] {corrected}</color>", false);
         }
 
         private void OnSendCustomClicked()
@@ -497,7 +513,7 @@ namespace Homepad.UI
             string hex = customHexInput.text.Trim();
             if (string.IsNullOrEmpty(hex)) return;
 
-            AppendLog($"<color=#55AAFF>[TX 커스텀]</color> {hex}", false);
+            AppendLog($"<b>[커스텀 직접전송]</b>\n              <color=#6DA6D6>{hex}</color>", true);
             SendRawHex(hex);
         }
 
@@ -509,11 +525,11 @@ namespace Homepad.UI
             if (KocomProtocol.TryParse(packet, out var frame))
             {
                 string decoded = KocomProtocol.DecodeFrame(frame);
-                AppendLog($"<color=#55FF55>[RX 수신] {decoded}</color>\n<color=#888888>HEX: {hexStr}</color>", false);
+                AppendLog($"<color=#5CAE7C>[RX 수신] {decoded}</color>\n              <color=#7E8794>HEX: {hexStr}</color>", false);
             }
             else
             {
-                AppendLog($"<color=#FFFF55>[RX 알수없는 패킷] {hexStr}</color>", false);
+                AppendLog($"<color=#E5B550>[RX 알수없는 패킷] {hexStr}</color>", false);
             }
         }
 
@@ -526,9 +542,9 @@ namespace Homepad.UI
 
         private void AppendLog(string message, bool isTx)
         {
-            string color = isTx ? "#55AAFF" : "#CCCCCC";
+            string color = isTx ? "#FFFFFF" : "#CCCCCC";
             string time = DateTime.Now.ToString("HH:mm:ss.fff");
-            string line = $"<color=#888888>[{time}]</color> <color={color}>{message}</color>\n";
+            string line = $"<color=#7E8794>[{time}]</color> <color={color}>{message}</color>\n";
 
             logBuilder.Append(line);
             logLineCount++;
@@ -575,7 +591,7 @@ namespace Homepad.UI
                     portField.text = saved;
                 }
 
-                AppendLog("[시스템] USB 시리얼 포트를 찾지 못했습니다. 아두이노를 다시 꽂거나 IDE 시리얼 모니터를 닫은 뒤 새로고침하세요.", false);
+                AppendLog("<color=#CF5C5C>[시스템] USB 시리얼 포트를 찾지 못했습니다. 아두이노를 다시 꽂거나 IDE 시리얼 모니터를 닫은 뒤 새로고침하세요.</color>", false);
                 return;
             }
 
@@ -587,7 +603,7 @@ namespace Homepad.UI
             }
 
             if (portField != null) portField.text = ports[portIndex];
-            AppendLog($"[시스템] 시리얼 포트 {ports.Length}개: {string.Join(", ", ports)}", false);
+            AppendLog($"<color=#9EA6B5>[시스템] 시리얼 포트 {ports.Length}개: {string.Join(", ", ports)}</color>", false);
         }
 
         private void CyclePort(int delta)
@@ -607,19 +623,22 @@ namespace Homepad.UI
             var serial = GetConnector();
             if (serial == null)
             {
-                AppendLog("[오류] ArduinoConnector를 만들 수 없습니다.", false);
+                AppendLog("<color=#CF5C5C>[오류] ArduinoConnector를 만들 수 없습니다.</color>", false);
                 return;
             }
 
             string port = portField != null ? portField.text.Trim() : "";
             if (string.IsNullOrEmpty(port))
             {
-                AppendLog("[오류] 시리얼 포트가 비어 있습니다. 새로고침 후 포트를 선택하세요.", false);
+                AppendLog("<color=#CF5C5C>[오류] 시리얼 포트가 비어 있습니다. 새로고침 후 포트를 선택하세요.</color>", false);
                 return;
             }
 
             int baud = 115200;
-            if (baudField != null) int.TryParse(baudField.text.Trim(), out baud);
+            if (baudField != null && int.TryParse(baudField.text.Trim(), out int parsed) && parsed > 0)
+            {
+                baud = parsed;
+            }
             serial.SetSerialTarget(port, baud);
         }
 
@@ -628,12 +647,12 @@ namespace Homepad.UI
             if (statusText != null)
             {
                 statusText.text = isConnected ? "시리얼 연결됨" : "연결 안 됨";
-                statusText.color = isConnected ? OkColor : DangerColor;
+                statusText.color = isConnected ? MutedGreen : MutedRed;
             }
 
             if (statusDot != null)
             {
-                statusDot.color = isConnected ? OkColor : DangerColor;
+                statusDot.color = isConnected ? MutedGreen : MutedRed;
             }
         }
 
@@ -649,12 +668,18 @@ namespace Homepad.UI
             });
         }
 
-        private GameObject CreatePresetRowObject(Transform parent, HexPreset preset)
+        private GameObject CreatePresetRowObject(Transform parent, HexPreset preset, int rowIndex)
         {
             GameObject row = new GameObject("PresetRow", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
             row.transform.SetParent(parent, false);
             var rowImg = row.GetComponent<Image>();
-            rowImg.color = new Color(0.14f, 0.17f, 0.23f, 0.95f);
+            if (roundedSprite != null)
+            {
+                rowImg.sprite = roundedSprite;
+                rowImg.type = Image.Type.Sliced;
+                rowImg.pixelsPerUnitMultiplier = 1.6f;
+            }
+            rowImg.color = (rowIndex % 2 == 0) ? PresetRowA : PresetRowB;
 
             var layout = row.GetComponent<LayoutElement>();
             layout.minHeight = 68f;
@@ -667,48 +692,54 @@ namespace Homepad.UI
             rowRt.pivot = new Vector2(0.5f, 1f);
             rowRt.sizeDelta = new Vector2(0f, 68f);
 
-            // Title
             var titleGo = new GameObject("Title", typeof(RectTransform), typeof(Text));
             titleGo.transform.SetParent(row.transform, false);
             var title = titleGo.GetComponent<Text>();
             title.font = uiFont;
-            title.fontSize = 20;
+            title.fontSize = 18;
             title.fontStyle = FontStyle.Bold;
             title.text = preset.title;
             title.color = Color.white;
             title.alignment = TextAnchor.MiddleLeft;
+            title.raycastTarget = false;
 
             var titleRt = titleGo.GetComponent<RectTransform>();
-            titleRt.anchorMin = new Vector2(0f, 0.45f);
-            titleRt.anchorMax = new Vector2(0.78f, 1f);
-            titleRt.offsetMin = new Vector2(14, 0);
-            titleRt.offsetMax = new Vector2(-5, -4);
+            titleRt.anchorMin = new Vector2(0f, 0.46f);
+            titleRt.anchorMax = new Vector2(0.80f, 1f);
+            titleRt.offsetMin = new Vector2(18, 0);
+            titleRt.offsetMax = new Vector2(-8, -2);
 
-            // Hex Text
             var hexGo = new GameObject("Hex", typeof(RectTransform), typeof(Text));
             hexGo.transform.SetParent(row.transform, false);
             var hexText = hexGo.GetComponent<Text>();
             hexText.font = uiFont;
-            hexText.fontSize = 15;
+            hexText.fontSize = 13;
             hexText.text = preset.hexString;
-            hexText.color = new Color(0.55f, 0.78f, 1f, 1f);
+            hexText.color = HexCodeCyan;
             hexText.alignment = TextAnchor.MiddleLeft;
+            hexText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            hexText.raycastTarget = false;
 
             var hexRt = hexGo.GetComponent<RectTransform>();
             hexRt.anchorMin = new Vector2(0f, 0f);
-            hexRt.anchorMax = new Vector2(0.78f, 0.45f);
-            hexRt.offsetMin = new Vector2(14, 4);
-            hexRt.offsetMax = new Vector2(-5, 0);
+            hexRt.anchorMax = new Vector2(0.80f, 0.50f);
+            hexRt.offsetMin = new Vector2(18, 4);
+            hexRt.offsetMax = new Vector2(-8, 0);
 
-            // Send Button
             GameObject sendBtnGo = new GameObject("SendButton", typeof(RectTransform), typeof(Image), typeof(Button));
             sendBtnGo.transform.SetParent(row.transform, false);
             var btnImg = sendBtnGo.GetComponent<Image>();
-            btnImg.color = new Color(0.18f, 0.52f, 0.88f, 1f);
+            if (roundedSprite != null)
+            {
+                btnImg.sprite = roundedSprite;
+                btnImg.type = Image.Type.Sliced;
+                btnImg.pixelsPerUnitMultiplier = 1.8f;
+            }
+            btnImg.color = SoftSendBlue;
 
             var sendRt = sendBtnGo.GetComponent<RectTransform>();
-            sendRt.anchorMin = new Vector2(0.80f, 0.12f);
-            sendRt.anchorMax = new Vector2(0.98f, 0.88f);
+            sendRt.anchorMin = new Vector2(0.82f, 0.18f);
+            sendRt.anchorMax = new Vector2(0.975f, 0.82f);
             sendRt.offsetMin = Vector2.zero;
             sendRt.offsetMax = Vector2.zero;
 
@@ -716,11 +747,12 @@ namespace Homepad.UI
             btnTextGo.transform.SetParent(sendBtnGo.transform, false);
             var btnText = btnTextGo.GetComponent<Text>();
             btnText.font = uiFont;
-            btnText.fontSize = 18;
+            btnText.fontSize = 16;
             btnText.fontStyle = FontStyle.Bold;
             btnText.text = "전송";
             btnText.alignment = TextAnchor.MiddleCenter;
             btnText.color = Color.white;
+            btnText.raycastTarget = false;
 
             var btnTextRt = btnTextGo.GetComponent<RectTransform>();
             btnTextRt.anchorMin = Vector2.zero;
