@@ -86,6 +86,7 @@ namespace Homepad.UI
         private float logSelXFrom;
         private float logSelXTo;
         private readonly List<UILineInfo> logLineInfos = new List<UILineInfo>();
+        private bool logFollowTail = true;
 
         private void Awake()
         {
@@ -158,6 +159,7 @@ namespace Homepad.UI
             }
 
             CopyLogIfShortcutPressed();
+            HandleLogMouseScroll(pos, mouse);
         }
 
         private void HookConnector()
@@ -258,9 +260,20 @@ namespace Homepad.UI
             rt.offsetMin = new Vector2(12f, rt.offsetMin.y);
             rt.offsetMax = new Vector2(-12f, -8f);
 
-            if (logScrollRect != null && logScrollRect.viewport == null)
+            if (logScrollRect != null)
             {
-                logScrollRect.viewport = logScrollRect.GetComponent<RectTransform>();
+                logScrollRect.movementType = ScrollRect.MovementType.Clamped;
+                logScrollRect.scrollSensitivity = 30f;
+                if (logScrollRect.viewport == null)
+                {
+                    logScrollRect.viewport = logScrollRect.GetComponent<RectTransform>();
+                }
+
+                if (logScrollRect.content != null)
+                {
+                    var fitter = logScrollRect.content.GetComponent<ContentSizeFitter>();
+                    if (fitter != null) fitter.enabled = false;
+                }
             }
 
             EnsureLogHighlightRoot();
@@ -581,6 +594,7 @@ namespace Homepad.UI
             logBuilder.Clear();
             logLineCount = 0;
             if (logText != null) logText.text = string.Empty;
+            logFollowTail = true;
             ClearLogSelection();
         }
 
@@ -617,13 +631,58 @@ namespace Homepad.UI
                 }
             }
 
-            if (logScrollRect != null)
-            {
-                Canvas.ForceUpdateCanvases();
-                logScrollRect.verticalNormalizedPosition = 0f;
-            }
+            if (logFollowTail) PinLogToBottom();
 
             ClearLogSelection();
+        }
+
+        private void HandleLogMouseScroll(Vector2 screenPos, Mouse mouse)
+        {
+            if (!IsPointerOverLog(screenPos)) return;
+            float dy = mouse.scroll.ReadValue().y;
+            if (Mathf.Abs(dy) < 0.01f) return;
+
+            var content = LogScrollContent();
+            if (content == null) return;
+
+            float y = content.anchoredPosition.y - dy * 30f;
+            content.anchoredPosition = new Vector2(content.anchoredPosition.x, ClampLogScroll(y));
+            logFollowTail = IsLogNearBottom();
+        }
+
+        private void PinLogToBottom()
+        {
+            var content = LogScrollContent();
+            if (content == null) return;
+            content.anchoredPosition = new Vector2(content.anchoredPosition.x, ClampLogScroll(float.MaxValue));
+        }
+
+        private bool IsLogNearBottom()
+        {
+            var content = LogScrollContent();
+            if (content == null) return true;
+            return content.anchoredPosition.y >= LogScrollMax() - 24f;
+        }
+
+        private RectTransform LogScrollContent()
+        {
+            if (logScrollRect == null) return null;
+            return logScrollRect.content != null ? logScrollRect.content : logText != null ? logText.transform.parent as RectTransform : null;
+        }
+
+        private float LogScrollMax()
+        {
+            var content = LogScrollContent();
+            var view = logScrollRect != null
+                ? (logScrollRect.viewport != null ? logScrollRect.viewport : logScrollRect.GetComponent<RectTransform>())
+                : null;
+            if (content == null || view == null) return 0f;
+            return Mathf.Max(0f, content.rect.height - view.rect.height);
+        }
+
+        private float ClampLogScroll(float y)
+        {
+            return Mathf.Clamp(y, 0f, LogScrollMax());
         }
 
         private void RefreshPorts(bool preferSaved)
