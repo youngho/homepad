@@ -1,71 +1,66 @@
-using System.Collections.Generic;
 using Homepad.Core;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace Homepad.UI
 {
-    /// <summary>
-    /// 난방 제어 패널 UI
-    /// </summary>
     public class HeatingPanelUI : MonoBehaviour
     {
-        [System.Serializable]
-        public class RoomHeatingUI
-        {
-            public Text roomNameText;
-            public Text currentTempText;
-            public Text targetTempText;
-            public Button tempUpButton;
-            public Button tempDownButton;
-            public Button powerButton;
-            public Text powerText;
-            public Button awayButton;
-            public Text awayText;
-            public Image backgroundCard;
-        }
+        private Text[] names;
+        private Text[] currentTemps;
+        private Text[] targetTemps;
+        private Text[] powerTexts;
+        private Text[] awayTexts;
 
-        [SerializeField] private List<RoomHeatingUI> roomUIs = new List<RoomHeatingUI>();
-
-        private void Start()
+        public void Build()
         {
-            for (int i = 0; i < roomUIs.Count; i++)
+            var root = GetComponent<RectTransform>();
+            var rooms = WallpadManager.Instance != null ? WallpadManager.Instance.HeatingRooms : null;
+            int count = rooms != null ? rooms.Count : 0;
+            names = new Text[count];
+            currentTemps = new Text[count];
+            targetTemps = new Text[count];
+            powerTexts = new Text[count];
+            awayTexts = new Text[count];
+
+            for (int i = 0; i < count; i++)
             {
-                int roomId = i + 1;
-                var ui = roomUIs[i];
+                int col = i % 2;
+                int row = i / 2;
+                float x0 = col * 0.5f;
+                float y1 = 1f - row * 0.5f;
+                float y0 = y1 - 0.48f;
+                int roomId = rooms[i].roomId;
 
-                if (ui.tempUpButton != null)
-                {
-                    ui.tempUpButton.onClick.AddListener(() =>
-                    {
-                        var room = WallpadManager.Instance.HeatingRooms[roomId - 1];
-                        WallpadManager.Instance.SetHeatingTargetTemp(roomId, room.targetTemp + 0.5f);
-                    });
-                }
+                var card = UiFactory.Create($"Room{roomId}", root, new Vector2(x0, y0), new Vector2(x0 + 0.5f, y1), new Vector2(8, 8), new Vector2(-8, -8));
+                UiFactory.AddImage(card, new Color(0.13f, 0.16f, 0.22f, 1f), false);
+                names[i] = UiFactory.CreateLabel("Name", card, new Vector2(0, 0.72f), Vector2.one, new Vector2(20, 0), new Vector2(-20, -12), rooms[i].roomName, 28, Color.white, TextAnchor.MiddleLeft);
+                currentTemps[i] = UiFactory.CreateLabel("Current", card, new Vector2(0, 0.42f), new Vector2(0.5f, 0.72f), new Vector2(20, 0), Vector2.zero, "22.0℃", 24, new Color(1, 1, 1, 0.7f), TextAnchor.MiddleLeft);
+                targetTemps[i] = UiFactory.CreateLabel("Target", card, new Vector2(0.35f, 0.42f), new Vector2(1, 0.72f), Vector2.zero, new Vector2(-20, 0), "24.0℃", 36, Color.white, TextAnchor.MiddleRight);
 
-                if (ui.tempDownButton != null)
-                {
-                    ui.tempDownButton.onClick.AddListener(() =>
-                    {
-                        var room = WallpadManager.Instance.HeatingRooms[roomId - 1];
-                        WallpadManager.Instance.SetHeatingTargetTemp(roomId, room.targetTemp - 0.5f);
-                    });
-                }
+                var down = UiFactory.CreateButton("Down", card, new Vector2(0.02f, 0.08f), new Vector2(0.16f, 0.38f), Vector2.zero, Vector2.zero, "−", new Color(0.18f, 0.2f, 0.26f), 32);
+                var up = UiFactory.CreateButton("Up", card, new Vector2(0.18f, 0.08f), new Vector2(0.32f, 0.38f), Vector2.zero, Vector2.zero, "+", new Color(0.18f, 0.2f, 0.26f), 32);
+                var power = UiFactory.CreateButton("Power", card, new Vector2(0.36f, 0.08f), new Vector2(0.66f, 0.38f), Vector2.zero, Vector2.zero, "난방 켬", new Color(0.78f, 0.38f, 0.22f), 22);
+                var away = UiFactory.CreateButton("Away", card, new Vector2(0.68f, 0.08f), new Vector2(0.98f, 0.38f), Vector2.zero, Vector2.zero, "일반", new Color(0.18f, 0.2f, 0.26f), 22);
+                powerTexts[i] = power.GetComponentInChildren<Text>();
+                awayTexts[i] = away.GetComponentInChildren<Text>();
 
-                if (ui.powerButton != null)
+                down.onClick.AddListener(() =>
                 {
-                    ui.powerButton.onClick.AddListener(() => WallpadManager.Instance.ToggleHeatingPower(roomId));
-                }
-
-                if (ui.awayButton != null)
+                    var room = WallpadManager.Instance.HeatingRooms[roomId - 1];
+                    WallpadManager.Instance.SetHeatingTargetTemp(roomId, room.targetTemp - 0.5f);
+                });
+                up.onClick.AddListener(() =>
                 {
-                    ui.awayButton.onClick.AddListener(() => WallpadManager.Instance.ToggleHeatingAway(roomId));
-                }
+                    var room = WallpadManager.Instance.HeatingRooms[roomId - 1];
+                    WallpadManager.Instance.SetHeatingTargetTemp(roomId, room.targetTemp + 0.5f);
+                });
+                power.onClick.AddListener(() => WallpadManager.Instance.ToggleHeatingPower(roomId));
+                away.onClick.AddListener(() => WallpadManager.Instance.ToggleHeatingAway(roomId));
             }
 
             if (WallpadManager.Instance != null)
             {
-                WallpadManager.Instance.OnHeatingChanged += OnHeatingChanged;
                 WallpadManager.Instance.OnStateChanged += RefreshAll;
             }
 
@@ -74,42 +69,28 @@ namespace Homepad.UI
 
         private void OnDestroy()
         {
-            if (WallpadManager.Instance != null)
-            {
-                WallpadManager.Instance.OnHeatingChanged -= OnHeatingChanged;
-                WallpadManager.Instance.OnStateChanged -= RefreshAll;
-            }
-        }
-
-        private void OnHeatingChanged(HeatingState room)
-        {
-            RefreshAll();
+            if (WallpadManager.Instance == null) return;
+            WallpadManager.Instance.OnStateChanged -= RefreshAll;
         }
 
         public void RefreshAll()
         {
-            if (WallpadManager.Instance == null) return;
+            if (WallpadManager.Instance == null || names == null) return;
             var rooms = WallpadManager.Instance.HeatingRooms;
-
-            for (int i = 0; i < rooms.Count && i < roomUIs.Count; i++)
+            for (int i = 0; i < rooms.Count && i < names.Length; i++)
             {
                 var room = rooms[i];
-                var ui = roomUIs[i];
-
-                if (ui.roomNameText != null) ui.roomNameText.text = room.roomName;
-                if (ui.currentTempText != null) ui.currentTempText.text = $"{room.currentTemp:F1}℃";
-                if (ui.targetTempText != null) ui.targetTempText.text = $"{room.targetTemp:F1}℃";
-
-                if (ui.powerText != null)
+                if (names[i] != null) names[i].text = room.roomName;
+                if (currentTemps[i] != null) currentTemps[i].text = $"현재 {room.currentTemp:F1}℃";
+                if (targetTemps[i] != null) targetTemps[i].text = $"{room.targetTemp:F1}℃";
+                if (powerTexts[i] != null)
                 {
-                    ui.powerText.text = room.isPowered ? "난방 켬" : "난방 끔";
-                    ui.powerText.color = room.isPowered ? new Color(1f, 0.45f, 0.3f) : new Color(0.5f, 0.5f, 0.55f);
+                    powerTexts[i].text = room.isPowered ? "난방 켬" : "난방 끔";
                 }
 
-                if (ui.awayText != null)
+                if (awayTexts[i] != null)
                 {
-                    ui.awayText.text = room.isAwayMode ? "외출 중" : "일반";
-                    ui.awayText.color = room.isAwayMode ? new Color(0.3f, 0.75f, 1f) : new Color(0.5f, 0.5f, 0.55f);
+                    awayTexts[i].text = room.isAwayMode ? "외출 중" : "일반";
                 }
             }
         }

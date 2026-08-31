@@ -5,127 +5,108 @@ using UnityEngine.UI;
 
 namespace Homepad.UI
 {
-    /// <summary>
-    /// 아두이노 통신 설정 및 RS-485 패킷 모니터링 UI
-    /// </summary>
     public class NetworkSettingsUI : MonoBehaviour
     {
-        [Header("Inputs")]
-        [SerializeField] private InputField ipInputField;
-        [SerializeField] private InputField portInputField;
-        [SerializeField] private Toggle simulationToggle;
-        [SerializeField] private Button applyButton;
-        [SerializeField] private Button clearLogButton;
+        private static readonly Color Connected = new Color(0.2f, 0.85f, 0.4f);
+        private static readonly Color Disconnected = new Color(0.9f, 0.3f, 0.3f);
 
-        [Header("Status & Log")]
-        [SerializeField] private Text connectionStatusText;
-        [SerializeField] private Image connectionStatusIndicator;
-        [SerializeField] private Text logText;
-        [SerializeField] private ScrollRect logScrollRect;
-
-        [Header("Colors")]
-        [SerializeField] private Color connectedColor = new Color(0.2f, 0.85f, 0.4f);
-        [SerializeField] private Color disconnectedColor = new Color(0.9f, 0.3f, 0.3f);
-
+        private InputField ipInput;
+        private InputField portInput;
+        private Toggle simulationToggle;
+        private Text statusText;
+        private Image statusDot;
+        private Text logText;
         private readonly StringBuilder logBuilder = new StringBuilder();
-        private const int MAX_LOG_LINES = 50;
-        private int logLineCount = 0;
+        private int logLineCount;
+        private const int MaxLogLines = 50;
 
-        private void Start()
+        public void Build()
         {
+            var root = GetComponent<RectTransform>();
             var connector = WallpadManager.Instance != null ? WallpadManager.Instance.Connector : null;
+
+            UiFactory.CreateLabel("IpLabel", root, new Vector2(0, 0.9f), new Vector2(0.18f, 1f), Vector2.zero, Vector2.zero, "IP", 24, Color.white, TextAnchor.MiddleLeft);
+            ipInput = UiFactory.CreateInput("Ip", root, new Vector2(0.18f, 0.9f), new Vector2(0.55f, 1f), Vector2.zero, new Vector2(-8, 0), connector != null ? connector.ArduinoIp : "192.168.0.100");
+
+            UiFactory.CreateLabel("PortLabel", root, new Vector2(0.56f, 0.9f), new Vector2(0.68f, 1f), Vector2.zero, Vector2.zero, "포트", 24, Color.white, TextAnchor.MiddleLeft);
+            portInput = UiFactory.CreateInput("Port", root, new Vector2(0.68f, 0.9f), Vector2.one, Vector2.zero, Vector2.zero, connector != null ? connector.ArduinoPort.ToString() : "8080");
+
+            simulationToggle = UiFactory.CreateToggle("Sim", root, new Vector2(0, 0.78f), new Vector2(0.45f, 0.88f), Vector2.zero, Vector2.zero, "시뮬레이션 모드", connector == null || connector.UseSimulationMode);
+
+            var apply = UiFactory.CreateButton("Apply", root, new Vector2(0.48f, 0.78f), new Vector2(0.72f, 0.88f), Vector2.zero, new Vector2(-8, 0), "적용", new Color(0.18f, 0.45f, 0.9f), 24);
+            apply.onClick.AddListener(OnApplyClicked);
+            var clear = UiFactory.CreateButton("Clear", root, new Vector2(0.74f, 0.78f), Vector2.one, Vector2.zero, Vector2.zero, "로그 지우기", new Color(0.18f, 0.2f, 0.26f), 24);
+            clear.onClick.AddListener(ClearLogs);
+
+            var statusRect = UiFactory.Create("StatusDot", root, new Vector2(0.02f, 0.70f), new Vector2(0.02f, 0.70f), Vector2.zero, Vector2.zero);
+            statusRect.sizeDelta = new Vector2(16, 16);
+            statusDot = UiFactory.AddImage(statusRect, Connected, false);
+            statusText = UiFactory.CreateLabel("Status", root, new Vector2(0.05f, 0.64f), new Vector2(1, 0.76f), Vector2.zero, Vector2.zero, "상태", 24, Connected, TextAnchor.MiddleLeft);
+
+            var logRect = UiFactory.Create("Log", root, Vector2.zero, new Vector2(1, 0.62f), Vector2.zero, Vector2.zero);
+            UiFactory.AddImage(logRect, new Color(0.08f, 0.09f, 0.12f), false);
+            logText = UiFactory.CreateLabel("LogText", logRect, Vector2.zero, Vector2.one, new Vector2(16, 12), new Vector2(-16, -12), "", 18, new Color(0.85f, 0.9f, 0.95f), TextAnchor.UpperLeft);
+            logText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            logText.verticalOverflow = VerticalWrapMode.Overflow;
+            logText.supportRichText = true;
 
             if (connector != null)
             {
-                if (ipInputField != null) ipInputField.text = connector.ArduinoIp;
-                if (portInputField != null) portInputField.text = connector.ArduinoPort.ToString();
-                if (simulationToggle != null) simulationToggle.isOn = connector.UseSimulationMode;
-
                 connector.OnConnectionStatusChanged += UpdateConnectionStatus;
                 connector.OnLogMessage += AppendLog;
-
                 UpdateConnectionStatus(connector.IsConnected);
-            }
-
-            if (applyButton != null)
-            {
-                applyButton.onClick.AddListener(OnApplyClicked);
-            }
-
-            if (clearLogButton != null)
-            {
-                clearLogButton.onClick.AddListener(ClearLogs);
             }
         }
 
         private void OnDestroy()
         {
-            if (WallpadManager.Instance != null && WallpadManager.Instance.Connector != null)
-            {
-                WallpadManager.Instance.Connector.OnConnectionStatusChanged -= UpdateConnectionStatus;
-                WallpadManager.Instance.Connector.OnLogMessage -= AppendLog;
-            }
+            if (WallpadManager.Instance == null || WallpadManager.Instance.Connector == null) return;
+            WallpadManager.Instance.Connector.OnConnectionStatusChanged -= UpdateConnectionStatus;
+            WallpadManager.Instance.Connector.OnLogMessage -= AppendLog;
         }
 
         private void OnApplyClicked()
         {
             if (WallpadManager.Instance == null || WallpadManager.Instance.Connector == null) return;
-
-            string ip = ipInputField != null ? ipInputField.text.Trim() : "192.168.0.100";
+            string ip = ipInput != null ? ipInput.text.Trim() : "192.168.0.100";
             int port = 8080;
-            if (portInputField != null && int.TryParse(portInputField.text.Trim(), out int parsedPort))
-            {
-                port = parsedPort;
-            }
-            bool isSim = simulationToggle != null && simulationToggle.isOn;
-
-            WallpadManager.Instance.Connector.SetTarget(ip, port, isSim);
+            if (portInput != null) int.TryParse(portInput.text.Trim(), out port);
+            bool sim = simulationToggle != null && simulationToggle.isOn;
+            WallpadManager.Instance.Connector.SetTarget(ip, port, sim);
         }
 
         private void UpdateConnectionStatus(bool isConnected)
         {
-            if (connectionStatusText != null)
+            bool sim = WallpadManager.Instance != null && WallpadManager.Instance.Connector.UseSimulationMode;
+            if (statusText != null)
             {
-                bool isSim = WallpadManager.Instance != null && WallpadManager.Instance.Connector.UseSimulationMode;
-                connectionStatusText.text = isConnected ? (isSim ? "가상 시뮬레이션 연결됨" : "아두이노 UNO WiFi 연결됨") : "통신 끊김 (오프라인)";
-                connectionStatusText.color = isConnected ? connectedColor : disconnectedColor;
+                statusText.text = isConnected ? (sim ? "가상 시뮬레이션 연결됨" : "아두이노 UNO WiFi 연결됨") : "통신 끊김 (오프라인)";
+                statusText.color = isConnected ? Connected : Disconnected;
             }
-            if (connectionStatusIndicator != null)
+
+            if (statusDot != null)
             {
-                connectionStatusIndicator.color = isConnected ? connectedColor : disconnectedColor;
+                statusDot.color = isConnected ? Connected : Disconnected;
             }
         }
 
         private void AppendLog(string message, bool isTx)
         {
-            string timeStr = System.DateTime.Now.ToString("HH:mm:ss");
-            string formatted = $"<color=#888888>[{timeStr}]</color> {(isTx ? "<color=#55AAFF>" : "<color=#AAAAAA>")}{message}</color>\n";
-
-            logBuilder.Append(formatted);
+            string color = isTx ? "#55AAFF" : "#AAAAAA";
+            logBuilder.Append($"<color=#888888>[{System.DateTime.Now:HH:mm:ss}]</color> <color={color}>{message}</color>\n");
             logLineCount++;
-
-            if (logLineCount > MAX_LOG_LINES)
+            if (logLineCount > MaxLogLines)
             {
-                // Trim first lines
                 string current = logBuilder.ToString();
-                int firstNewline = current.IndexOf('\n');
-                if (firstNewline >= 0)
+                int newline = current.IndexOf('\n');
+                if (newline >= 0)
                 {
-                    logBuilder.Remove(0, firstNewline + 1);
+                    logBuilder.Remove(0, newline + 1);
                     logLineCount--;
                 }
             }
 
-            if (logText != null)
-            {
-                logText.text = logBuilder.ToString();
-            }
-
-            if (logScrollRect != null)
-            {
-                Canvas.ForceUpdateCanvases();
-                logScrollRect.verticalNormalizedPosition = 0f;
-            }
+            if (logText != null) logText.text = logBuilder.ToString();
         }
 
         private void ClearLogs()

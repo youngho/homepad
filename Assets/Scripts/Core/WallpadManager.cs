@@ -1,17 +1,16 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace Homepad.Core
 {
-    /// <summary>
-    /// 스마트 월패드 중앙 통합 제어 및 상태 관리 싱글톤
-    /// </summary>
     public class WallpadManager : MonoBehaviour
     {
         public static WallpadManager Instance { get; private set; }
 
         [Header("Components")]
+        [SerializeField] private WallpadConfig config;
         [SerializeField] private ArduinoConnector connector;
 
         [Header("Device States")]
@@ -20,9 +19,8 @@ namespace Homepad.Core
         [SerializeField] private GasState gas = new GasState(false);
         [SerializeField] private VentilationState ventilation = new VentilationState();
         [SerializeField] private ElevatorState elevator = new ElevatorState();
-        [SerializeField] private bool isAwayMode = false; // 외출 모드
+        [SerializeField] private bool isAwayMode;
 
-        // State change events
         public event Action OnStateChanged;
         public event Action<LightState> OnLightChanged;
         public event Action<HeatingState> OnHeatingChanged;
@@ -31,6 +29,7 @@ namespace Homepad.Core
         public event Action<ElevatorState> OnElevatorChanged;
         public event Action<bool> OnAwayModeChanged;
 
+        public WallpadConfig Config => config;
         public ArduinoConnector Connector => connector;
         public IReadOnlyList<LightState> Lights => lights;
         public IReadOnlyList<HeatingState> HeatingRooms => heatingRooms;
@@ -38,17 +37,24 @@ namespace Homepad.Core
         public VentilationState Ventilation => ventilation;
         public ElevatorState Elevator => elevator;
         public bool IsAwayMode => isAwayMode;
+        public int HouseholdFloor => config != null ? config.householdFloor : 12;
+
+        private Coroutine elevatorRoutine;
 
         private void Awake()
         {
-            if (Instance == null)
-            {
-                Instance = this;
-            }
-            else
+            if (Instance != null && Instance != this)
             {
                 Destroy(gameObject);
                 return;
+            }
+
+            Instance = this;
+            UnityMainThreadDispatcher.EnsureExists();
+
+            if (config == null)
+            {
+                config = WallpadConfig.CreateRuntimeDefault();
             }
 
             if (connector == null)
@@ -57,32 +63,48 @@ namespace Homepad.Core
                 if (connector == null) connector = gameObject.AddComponent<ArduinoConnector>();
             }
 
-            InitializeDefaultDevices();
+            InitializeFromConfig();
+            connector.OnPacketReceived += HandlePacketReceived;
         }
 
-        private void InitializeDefaultDevices()
+        private void OnDestroy()
         {
-            // 기본 조명 목록 (6개)
-            lights.Clear();
-            lights.Add(new LightState(1, "거실 조명 1", false));
-            lights.Add(new LightState(2, "거실 조명 2", false));
-            lights.Add(new LightState(3, "안방 조명", false));
-            lights.Add(new LightState(4, "주방 조명", false));
-            lights.Add(new LightState(5, "침실 1 조명", false));
-            lights.Add(new LightState(6, "침실 2 조명", false));
+            if (Instance == this)
+            {
+                Instance = null;
+            }
 
-            // 기본 난방 방 목록 (4개)
-            heatingRooms.Clear();
-            heatingRooms.Add(new HeatingState(1, "거실", 22.5f, 24.0f));
-            heatingRooms.Add(new HeatingState(2, "안방", 23.0f, 24.5f));
-            heatingRooms.Add(new HeatingState(3, "침실 1", 21.0f, 23.0f));
-            heatingRooms.Add(new HeatingState(4, "침실 2", 21.5f, 23.0f));
+            if (connector != null)
+            {
+                connector.OnPacketReceived -= HandlePacketReceived;
+            }
         }
 
-        #region 조명 제어
+        private void InitializeFromConfig()
+        {
+            lights.Clear();
+            foreach (var definition in config.lights)
+            {
+                lights.Add(new LightState(definition.id, definition.name, false, definition.roomCode, definition.slot));
+            }
+
+            heatingRooms.Clear();
+            foreach (var definition in config.heatingRooms)
+            {
+                heatingRooms.Add(new HeatingState(
+                    definition.roomId,
+                    definition.roomName,
+                    definition.currentTemp,
+                    definition.targetTemp,
+                    definition.roomCode));
+            }
+
+            elevator.currentFloor = 1;
+        }
+
         public void ToggleLight(int id)
         {
-            var light = lights.Find(l => l.id == id);
+            var light = lights.Find(item => item.id == id);
             if (light != null)
             {
                 SetLight(id, !light.isOn);
@@ -91,127 +113,107 @@ namespace Homepad.Core
 
         public void SetLight(int id, bool turnOn)
         {
-            var light = lights.Find(l => l.id == id);
-            if (light != null)
-            {
-                light.isOn = turnOn;
-                byte[] packet = KocomProtocol.CreateLightControlPacket(id, turnOn);
-                connector?.SendPacket(packet);
+            var light = lights.Find(item => item.id == id);
+            if (light == null) return;
 
-                OnLightChanged?.Invoke(light);
-                OnStateChanged?.Invoke();
-            }
+            light.isOn = turnOn;
+            SendLightRoom(light.roomCode);
+            OnLightChanged?.Invoke(light);
+            RaiseStateChanged();
         }
 
-        /// <summary>
-        /// 일괄 소등 (모든 조명 끄기)
-        /// </summary>
         public void TurnOffAllLights()
         {
+            var rooms = new HashSet<ushort>();
             foreach (var light in lights)
             {
-                if (light.isOn)
-                {
-                    light.isOn = false;
-                    byte[] packet = KocomProtocol.CreateLightControlPacket(light.id, false);
-                    connector?.SendPacket(packet);
-                    OnLightChanged?.Invoke(light);
-                }
+                if (!light.isOn) continue;
+                light.isOn = false;
+                rooms.Add(light.roomCode);
+                OnLightChanged?.Invoke(light);
             }
-            OnStateChanged?.Invoke();
-        }
-        #endregion
 
-        #region 난방 제어
+            foreach (ushort room in rooms)
+            {
+                SendLightRoom(room);
+            }
+
+            RaiseStateChanged();
+        }
+
         public void SetHeatingTargetTemp(int roomId, float temp)
         {
-            var room = heatingRooms.Find(r => r.roomId == roomId);
-            if (room != null)
-            {
-                room.targetTemp = Mathf.Clamp(temp, 16f, 30f);
-                byte[] packet = KocomProtocol.CreateHeatingControlPacket(roomId, room.isPowered, room.isAwayMode, room.targetTemp);
-                connector?.SendPacket(packet);
+            var room = heatingRooms.Find(item => item.roomId == roomId);
+            if (room == null) return;
 
-                OnHeatingChanged?.Invoke(room);
-                OnStateChanged?.Invoke();
-            }
+            room.targetTemp = Mathf.Clamp(temp, 16f, 30f);
+            SendHeating(room);
+            OnHeatingChanged?.Invoke(room);
+            RaiseStateChanged();
         }
 
         public void ToggleHeatingPower(int roomId)
         {
-            var room = heatingRooms.Find(r => r.roomId == roomId);
-            if (room != null)
-            {
-                room.isPowered = !room.isPowered;
-                byte[] packet = KocomProtocol.CreateHeatingControlPacket(roomId, room.isPowered, room.isAwayMode, room.targetTemp);
-                connector?.SendPacket(packet);
+            var room = heatingRooms.Find(item => item.roomId == roomId);
+            if (room == null) return;
 
-                OnHeatingChanged?.Invoke(room);
-                OnStateChanged?.Invoke();
-            }
+            room.isPowered = !room.isPowered;
+            SendHeating(room);
+            OnHeatingChanged?.Invoke(room);
+            RaiseStateChanged();
         }
 
         public void ToggleHeatingAway(int roomId)
         {
-            var room = heatingRooms.Find(r => r.roomId == roomId);
-            if (room != null)
-            {
-                room.isAwayMode = !room.isAwayMode;
-                byte[] packet = KocomProtocol.CreateHeatingControlPacket(roomId, room.isPowered, room.isAwayMode, room.targetTemp);
-                connector?.SendPacket(packet);
+            var room = heatingRooms.Find(item => item.roomId == roomId);
+            if (room == null) return;
 
-                OnHeatingChanged?.Invoke(room);
-                OnStateChanged?.Invoke();
-            }
+            room.isAwayMode = !room.isAwayMode;
+            SendHeating(room);
+            OnHeatingChanged?.Invoke(room);
+            RaiseStateChanged();
         }
-        #endregion
 
-        #region 가스 밸브 제어
         public void CloseGasValve()
         {
             gas.isOpen = false;
-            byte[] packet = KocomProtocol.CreateGasClosePacket();
-            connector?.SendPacket(packet);
-
+            connector?.SendPacket(KocomProtocol.CreateGasClosePacket());
             OnGasChanged?.Invoke(gas);
-            OnStateChanged?.Invoke();
+            RaiseStateChanged();
         }
-        #endregion
 
-        #region 환기 시스템 제어
         public void SetVentilationSpeed(VentilationSpeed speed)
         {
             ventilation.speed = speed;
             ventilation.isPowered = speed != VentilationSpeed.Off;
-
-            byte[] packet = KocomProtocol.CreateVentilationPacket(speed);
-            connector?.SendPacket(packet);
-
+            connector?.SendPacket(KocomProtocol.CreateVentilationPacket(speed));
             OnVentilationChanged?.Invoke(ventilation);
-            OnStateChanged?.Invoke();
+            RaiseStateChanged();
         }
-        #endregion
 
-        #region 엘리베이터 호출
-        public void CallElevator(int floor = 1)
+        public void CallElevator(int floor = -1)
         {
+            if (floor < 1) floor = HouseholdFloor;
             elevator.isCalled = true;
-            byte[] packet = KocomProtocol.CreateElevatorCallPacket(floor);
-            connector?.SendPacket(packet);
-
+            connector?.SendPacket(KocomProtocol.CreateElevatorCallPacket());
             OnElevatorChanged?.Invoke(elevator);
-            OnStateChanged?.Invoke();
+            RaiseStateChanged();
+
+            if (connector != null && connector.UseSimulationMode)
+            {
+                if (elevatorRoutine != null) StopCoroutine(elevatorRoutine);
+                elevatorRoutine = StartCoroutine(SimulateElevator(floor));
+            }
         }
 
         public void ResetElevatorCall()
         {
             elevator.isCalled = false;
+            elevator.direction = ElevatorDirection.Stop;
             OnElevatorChanged?.Invoke(elevator);
-            OnStateChanged?.Invoke();
+            RaiseStateChanged();
         }
-        #endregion
 
-        #region 외출 모드
         public void ToggleAwayMode()
         {
             SetAwayMode(!isAwayMode);
@@ -222,19 +224,14 @@ namespace Homepad.Core
             isAwayMode = enable;
             if (enable)
             {
-                // 일괄 소등
                 TurnOffAllLights();
-                // 가스 잠금
                 CloseGasValve();
-                // 모든 방 외출 난방 설정
                 foreach (var room in heatingRooms)
                 {
                     room.isAwayMode = true;
-                    byte[] packet = KocomProtocol.CreateHeatingControlPacket(room.roomId, room.isPowered, true, room.targetTemp);
-                    connector?.SendPacket(packet);
+                    SendHeating(room);
                     OnHeatingChanged?.Invoke(room);
                 }
-                // 환기 Off
                 SetVentilationSpeed(VentilationSpeed.Off);
             }
             else
@@ -242,15 +239,156 @@ namespace Homepad.Core
                 foreach (var room in heatingRooms)
                 {
                     room.isAwayMode = false;
-                    byte[] packet = KocomProtocol.CreateHeatingControlPacket(room.roomId, room.isPowered, false, room.targetTemp);
-                    connector?.SendPacket(packet);
+                    SendHeating(room);
                     OnHeatingChanged?.Invoke(room);
                 }
             }
 
             OnAwayModeChanged?.Invoke(isAwayMode);
+            RaiseStateChanged();
+        }
+
+        private void HandlePacketReceived(byte[] raw)
+        {
+            if (!KocomProtocol.TryParse(raw, out var frame)) return;
+            ApplyFrame(frame);
+        }
+
+        private void ApplyFrame(KocomProtocol.Frame frame)
+        {
+            ushort device = frame.DeviceAddress;
+            switch (device)
+            {
+                case KocomProtocol.DeviceLight:
+                    ApplyLightFrame(frame);
+                    break;
+                case KocomProtocol.DeviceHeating:
+                    ApplyHeatingFrame(frame);
+                    break;
+                case KocomProtocol.DeviceGas:
+                    gas.isOpen = frame.value != null && frame.value.Length > 0 && frame.value[0] != 0x00;
+                    OnGasChanged?.Invoke(gas);
+                    RaiseStateChanged();
+                    break;
+                case KocomProtocol.DeviceVentilation:
+                    var speed = (VentilationSpeed)Mathf.Clamp(frame.value[0], 0, 3);
+                    ventilation.speed = speed;
+                    ventilation.isPowered = speed != VentilationSpeed.Off;
+                    OnVentilationChanged?.Invoke(ventilation);
+                    RaiseStateChanged();
+                    break;
+                case KocomProtocol.DeviceElevator:
+                    ApplyElevatorFrame(frame);
+                    break;
+            }
+        }
+
+        private void ApplyLightFrame(KocomProtocol.Frame frame)
+        {
+            bool changed = false;
+            foreach (var light in lights)
+            {
+                if (light.roomCode != frame.room) continue;
+                if (light.slot < 0 || light.slot >= frame.value.Length) continue;
+                bool isOn = frame.value[light.slot] == KocomProtocol.LightOn;
+                if (light.isOn == isOn) continue;
+                light.isOn = isOn;
+                OnLightChanged?.Invoke(light);
+                changed = true;
+            }
+
+            if (changed) RaiseStateChanged();
+        }
+
+        private void ApplyHeatingFrame(KocomProtocol.Frame frame)
+        {
+            var room = heatingRooms.Find(item => item.roomCode == frame.room);
+            if (room == null) return;
+
+            byte mode0 = frame.value[0];
+            byte mode1 = frame.value[1];
+            if (mode0 == KocomProtocol.HeatPowerOff0 && mode1 == KocomProtocol.HeatPowerOff1)
+            {
+                room.isPowered = false;
+                room.isAwayMode = false;
+            }
+            else if (mode0 == KocomProtocol.HeatAway0 && mode1 == KocomProtocol.HeatAway1)
+            {
+                room.isPowered = true;
+                room.isAwayMode = true;
+            }
+            else if (mode0 == KocomProtocol.HeatPowerOn0)
+            {
+                room.isPowered = true;
+                room.isAwayMode = false;
+            }
+
+            if (frame.value[2] >= 5)
+            {
+                room.targetTemp = frame.value[2];
+            }
+
+            if (frame.value[4] >= 5)
+            {
+                room.currentTemp = frame.value[4];
+            }
+
+            OnHeatingChanged?.Invoke(room);
+            RaiseStateChanged();
+        }
+
+        private void ApplyElevatorFrame(KocomProtocol.Frame frame)
+        {
+            byte marker = frame.value[0] != 0 ? frame.value[0] : frame.value[2];
+            if (marker >= 1 && marker <= 60 && marker != 0x03)
+            {
+                elevator.currentFloor = marker;
+            }
+
+            if (marker == 0x03)
+            {
+                elevator.isCalled = false;
+                elevator.direction = ElevatorDirection.Stop;
+                elevator.currentFloor = HouseholdFloor;
+            }
+
+            OnElevatorChanged?.Invoke(elevator);
+            RaiseStateChanged();
+        }
+
+        private void SendLightRoom(ushort room)
+        {
+            var roomLights = lights.FindAll(item => item.roomCode == room);
+            connector?.SendPacket(KocomProtocol.CreateLightRoomPacket(room, roomLights));
+        }
+
+        private void SendHeating(HeatingState room)
+        {
+            connector?.SendPacket(KocomProtocol.CreateHeatingControlPacket(room.roomCode, room.isPowered, room.isAwayMode, room.targetTemp));
+        }
+
+        private void RaiseStateChanged()
+        {
             OnStateChanged?.Invoke();
         }
-        #endregion
+
+        private IEnumerator SimulateElevator(int targetFloor)
+        {
+            elevator.direction = targetFloor >= elevator.currentFloor ? ElevatorDirection.Up : ElevatorDirection.Down;
+            OnElevatorChanged?.Invoke(elevator);
+
+            while (elevator.currentFloor != targetFloor)
+            {
+                yield return new WaitForSeconds(0.55f);
+                elevator.currentFloor += elevator.direction == ElevatorDirection.Up ? 1 : -1;
+                OnElevatorChanged?.Invoke(elevator);
+            }
+
+            elevator.direction = ElevatorDirection.Stop;
+            elevator.isCalled = false;
+            OnElevatorChanged?.Invoke(elevator);
+            RaiseStateChanged();
+            elevatorRoutine = null;
+        }
     }
 }

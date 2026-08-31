@@ -1,34 +1,39 @@
-using System.Collections;
 using Homepad.Core;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace Homepad.UI
 {
-    /// <summary>
-    /// 엘리베이터 호출 및 상태 표시 패널 UI
-    /// </summary>
     public class ElevatorPanelUI : MonoBehaviour
     {
-        [Header("Controls")]
-        [SerializeField] private Button callButton;
-        [SerializeField] private Text callButtonText;
-        [SerializeField] private Text currentFloorText;
-        [SerializeField] private Text statusText;
-        [SerializeField] private Image directionIcon;
+        private Button callButton;
+        private Text callButtonText;
+        private Text floorText;
+        private Text statusText;
 
-        private Coroutine simulationCoroutine;
-
-        private void Start()
+        public void Build()
         {
-            if (callButton != null)
+            var root = GetComponent<RectTransform>();
+            var card = UiFactory.Create("Card", root, new Vector2(0.18f, 0.08f), new Vector2(0.82f, 0.92f), Vector2.zero, Vector2.zero);
+            UiFactory.AddImage(card, new Color(0.13f, 0.16f, 0.22f), false);
+
+            int floor = WallpadManager.Instance != null ? WallpadManager.Instance.HouseholdFloor : 12;
+            UiFactory.CreateLabel("Title", card, new Vector2(0, 0.78f), Vector2.one, Vector2.zero, Vector2.zero, $"{floor}층 호출", 28, new Color(1, 1, 1, 0.7f), TextAnchor.MiddleCenter);
+            floorText = UiFactory.CreateLabel("Floor", card, new Vector2(0, 0.42f), new Vector2(1, 0.78f), Vector2.zero, Vector2.zero, "1F", 88, Color.white, TextAnchor.MiddleCenter);
+            statusText = UiFactory.CreateLabel("Status", card, new Vector2(0, 0.28f), new Vector2(1, 0.42f), Vector2.zero, Vector2.zero, "대기 상태", 26, new Color(1, 1, 1, 0.75f), TextAnchor.MiddleCenter);
+
+            callButton = UiFactory.CreateButton("Call", card, new Vector2(0.18f, 0.08f), new Vector2(0.82f, 0.24f), Vector2.zero, Vector2.zero, "엘리베이터 호출", new Color(0.18f, 0.45f, 0.9f), 28);
+            callButtonText = callButton.GetComponentInChildren<Text>();
+            callButton.onClick.AddListener(() =>
             {
-                callButton.onClick.AddListener(OnCallButtonClicked);
-            }
+                if (WallpadManager.Instance != null && !WallpadManager.Instance.Elevator.isCalled)
+                {
+                    WallpadManager.Instance.CallElevator();
+                }
+            });
 
             if (WallpadManager.Instance != null)
             {
-                WallpadManager.Instance.OnElevatorChanged += OnElevatorChanged;
                 WallpadManager.Instance.OnStateChanged += RefreshAll;
             }
 
@@ -37,70 +42,34 @@ namespace Homepad.UI
 
         private void OnDestroy()
         {
-            if (WallpadManager.Instance != null)
-            {
-                WallpadManager.Instance.OnElevatorChanged -= OnElevatorChanged;
-                WallpadManager.Instance.OnStateChanged -= RefreshAll;
-            }
+            if (WallpadManager.Instance == null) return;
+            WallpadManager.Instance.OnStateChanged -= RefreshAll;
         }
-
-        private void OnCallButtonClicked()
-        {
-            var el = WallpadManager.Instance.Elevator;
-            if (!el.isCalled)
-            {
-                WallpadManager.Instance.CallElevator(12); // 예: 현재 세대 12층 호출
-                if (simulationCoroutine != null) StopCoroutine(simulationCoroutine);
-                simulationCoroutine = StartCoroutine(ElevatorSimulationRoutine());
-            }
-        }
-
-        private IEnumerator ElevatorSimulationRoutine()
-        {
-            var el = WallpadManager.Instance.Elevator;
-            el.direction = ElevatorDirection.Up;
-            
-            for (int f = 1; f <= 12; f++)
-            {
-                el.currentFloor = f;
-                RefreshAll();
-                yield return new WaitForSeconds(0.7f);
-            }
-
-            el.direction = ElevatorDirection.Stop;
-            if (statusText != null) statusText.text = "엘리베이터가 도착했습니다.";
-            yield return new WaitForSeconds(3.0f);
-
-            WallpadManager.Instance.ResetElevatorCall();
-            RefreshAll();
-        }
-
-        private void OnElevatorChanged(ElevatorState el) => RefreshAll();
 
         public void RefreshAll()
         {
             if (WallpadManager.Instance == null) return;
-            var el = WallpadManager.Instance.Elevator;
-
+            var elevator = WallpadManager.Instance.Elevator;
             if (callButtonText != null)
             {
-                callButtonText.text = el.isCalled ? "호출 중..." : "엘리베이터 호출";
-            }
-            if (callButton != null)
-            {
-                callButton.interactable = !el.isCalled;
+                callButtonText.text = elevator.isCalled ? "호출 중..." : "엘리베이터 호출";
             }
 
-            if (currentFloorText != null)
+            if (callButton != null)
             {
-                currentFloorText.text = $"{el.currentFloor}F";
+                callButton.interactable = !elevator.isCalled;
+            }
+
+            if (floorText != null)
+            {
+                floorText.text = $"{elevator.currentFloor}F";
             }
 
             if (statusText != null)
             {
-                if (el.isCalled)
+                if (elevator.isCalled)
                 {
-                    statusText.text = el.direction == ElevatorDirection.Up ? "상승 중 (이동 중)" : "하강 중";
+                    statusText.text = elevator.direction == ElevatorDirection.Down ? "하강 중" : "상승 중";
                 }
                 else
                 {

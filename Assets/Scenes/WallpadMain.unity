@@ -258,6 +258,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Homepad.Core:Homepad.Core:WallpadManager
   connector: {fileID: 200003}
+  config: {fileID: 0}
   lights: []
   heatingRooms: []
   gas:
@@ -279,7 +280,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 200000}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e460c5a2c4e164a7ca33189280d21a11, type: 3}
+  m_Script: {fileID: 11500000, guid: bab3f522a069c483cbba7e3f450ed31c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Homepad.Core:Homepad.Core:ArduinoConnector
   arduinoIp: 192.168.0.100
@@ -295,7 +296,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 200000}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a0bb8cfecbb464e83a7e4b95fa1107ec, type: 3}
+  m_Script: {fileID: 11500000, guid: 2d2b19cb00a3e42ad898885a7f31cd90, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Homepad.Core:Homepad.Core:UnityMainThreadDispatcher
 --- !u!1 &300000
@@ -484,6 +485,7 @@ GameObject:
   - component: {fileID: 400001}
   - component: {fileID: 400002}
   - component: {fileID: 400003}
+  - component: {fileID: 400004}
   m_Layer: 5
   m_Name: WallpadRoot
   m_TagString: Untagged
@@ -548,3 +550,15 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
+--- !u!114 &400004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 400000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 22561138a10a040caa09576676551803, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Homepad.UI:Homepad.UI:WallpadUIController

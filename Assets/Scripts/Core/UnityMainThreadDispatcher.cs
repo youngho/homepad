@@ -4,13 +4,27 @@ using UnityEngine;
 
 namespace Homepad.Core
 {
-    /// <summary>
-    /// 백그라운드 소켓 스레드에서 Unity 메인 스레드로 작업을 전달하는 디스패처
-    /// </summary>
     public class UnityMainThreadDispatcher : MonoBehaviour
     {
         private static readonly Queue<Action> executionQueue = new Queue<Action>();
         private static UnityMainThreadDispatcher instance;
+
+        public static UnityMainThreadDispatcher EnsureExists()
+        {
+            if (instance != null) return instance;
+
+            var existing = FindFirstObjectByType<UnityMainThreadDispatcher>();
+            if (existing != null)
+            {
+                instance = existing;
+                return instance;
+            }
+
+            var go = new GameObject("UnityMainThreadDispatcher");
+            instance = go.AddComponent<UnityMainThreadDispatcher>();
+            DontDestroyOnLoad(go);
+            return instance;
+        }
 
         private void Awake()
         {
@@ -39,6 +53,7 @@ namespace Homepad.Core
         public static void Enqueue(Action action)
         {
             if (action == null) return;
+            EnsureExists();
 
             lock (executionQueue)
             {

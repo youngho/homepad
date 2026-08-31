@@ -1,16 +1,12 @@
 using System;
-using System.IO;
+using System.Collections.Generic;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
 namespace Homepad.Core
 {
-    /// <summary>
-    /// 아두이노 UNO WiFi 및 RS-485 통신 브릿지 클라이언트
-    /// </summary>
     public class ArduinoConnector : MonoBehaviour
     {
         [Header("Connection Settings")]
@@ -19,21 +15,28 @@ namespace Homepad.Core
         [SerializeField] private bool useSimulationMode = true;
 
         [Header("Status")]
-        [SerializeField] private bool isConnected = false;
+        [SerializeField] private bool isConnected;
 
         public string ArduinoIp => arduinoIp;
         public int ArduinoPort => arduinoPort;
         public bool UseSimulationMode => useSimulationMode;
         public bool IsConnected => useSimulationMode || isConnected;
 
-        // 이벤트
         public event Action<bool> OnConnectionStatusChanged;
         public event Action<byte[]> OnPacketReceived;
-        public event Action<string, bool> OnLogMessage; // msg, isTx
+        public event Action<string, bool> OnLogMessage;
 
         private TcpClient tcpClient;
         private NetworkStream networkStream;
         private CancellationTokenSource cts;
+        private readonly List<byte> receiveBuffer = new List<byte>(64);
+        private readonly List<byte[]> extractedFrames = new List<byte[]>();
+        private readonly object sendLock = new object();
+
+        private void Awake()
+        {
+            UnityMainThreadDispatcher.EnsureExists();
+        }
 
         public void SetTarget(string ip, int port, bool simulation)
         {
@@ -41,7 +44,7 @@ namespace Homepad.Core
             arduinoPort = port;
             useSimulationMode = simulation;
             OnLogMessage?.Invoke($"[시스템] 통신 대상 변경: {ip}:{port} (시뮬레이션 모드: {simulation})", false);
-            
+
             if (!simulation)
             {
                 ConnectToArduino();
@@ -49,6 +52,7 @@ namespace Homepad.Core
             else
             {
                 Disconnect();
+                isConnected = true;
                 OnConnectionStatusChanged?.Invoke(true);
             }
         }
@@ -57,6 +61,7 @@ namespace Homepad.Core
         {
             if (useSimulationMode)
             {
+                isConnected = true;
                 OnLogMessage?.Invoke("[아두이노] 가상 시뮬레이션 모드로 시작되었습니다.", false);
                 OnConnectionStatusChanged?.Invoke(true);
             }
@@ -82,26 +87,29 @@ namespace Homepad.Core
 
             Disconnect();
             cts = new CancellationTokenSource();
+            var token = cts.Token;
 
             Task.Run(async () =>
             {
                 try
                 {
-                    OnLogMessage?.Invoke($"[네트워크] 아두이노 UNO WiFi({arduinoIp}:{arduinoPort}) 접속 시도 중...", true);
+                    UnityMainThreadDispatcher.Enqueue(() =>
+                    {
+                        OnLogMessage?.Invoke($"[네트워크] 아두이노 UNO WiFi({arduinoIp}:{arduinoPort}) 접속 시도 중...", true);
+                    });
+
                     tcpClient = new TcpClient();
                     await tcpClient.ConnectAsync(arduinoIp, arduinoPort);
                     networkStream = tcpClient.GetStream();
                     isConnected = true;
 
-                    // Main thread callback
                     UnityMainThreadDispatcher.Enqueue(() =>
                     {
                         OnConnectionStatusChanged?.Invoke(true);
                         OnLogMessage?.Invoke($"[네트워크] 아두이노 연결 성공 ({arduinoIp}:{arduinoPort})", false);
                     });
 
-                    // Start receiving loop
-                    _ = ReceiveLoopAsync(cts.Token);
+                    await ReceiveLoopAsync(token);
                 }
                 catch (Exception ex)
                 {
@@ -112,20 +120,40 @@ namespace Homepad.Core
                         OnLogMessage?.Invoke($"[오류] 아두이노 연결 실패: {ex.Message}", false);
                     });
                 }
-            });
+            }, token);
         }
 
         public void Disconnect()
         {
-            cts?.Cancel();
-            cts?.Dispose();
+            var toCancel = cts;
             cts = null;
+            try
+            {
+                toCancel?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
 
-            networkStream?.Close();
+            try
+            {
+                networkStream?.Close();
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                tcpClient?.Close();
+            }
+            catch
+            {
+            }
+
             networkStream = null;
-
-            tcpClient?.Close();
             tcpClient = null;
+            toCancel?.Dispose();
 
             if (isConnected)
             {
@@ -134,9 +162,6 @@ namespace Homepad.Core
             }
         }
 
-        /// <summary>
-        /// RS-485 명령 패킷 아두이노로 송신
-        /// </summary>
         public void SendPacket(byte[] packet)
         {
             if (packet == null || packet.Length == 0) return;
@@ -149,65 +174,88 @@ namespace Homepad.Core
                 return;
             }
 
-            if (networkStream != null && networkStream.CanWrite)
-            {
-                Task.Run(async () =>
-                {
-                    try
-                    {
-                        await networkStream.WriteAsync(packet, 0, packet.Length);
-                        UnityMainThreadDispatcher.Enqueue(() =>
-                        {
-                            OnLogMessage?.Invoke($"[TX] {hexStr}", true);
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        UnityMainThreadDispatcher.Enqueue(() =>
-                        {
-                            OnLogMessage?.Invoke($"[TX 실패] {ex.Message}", true);
-                        });
-                    }
-                });
-            }
-            else
+            var stream = networkStream;
+            if (stream == null || !stream.CanWrite)
             {
                 OnLogMessage?.Invoke($"[TX 실패] 네트워크 스트림이 연결되어 있지 않습니다. {hexStr}", true);
+                return;
             }
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    lock (sendLock)
+                    {
+                        stream.Write(packet, 0, packet.Length);
+                    }
+
+                    UnityMainThreadDispatcher.Enqueue(() =>
+                    {
+                        OnLogMessage?.Invoke($"[TX] {hexStr}", true);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    UnityMainThreadDispatcher.Enqueue(() =>
+                    {
+                        OnLogMessage?.Invoke($"[TX 실패] {ex.Message}", true);
+                    });
+                }
+            });
         }
 
         private async Task ReceiveLoopAsync(CancellationToken token)
         {
             byte[] buffer = new byte[256];
+            receiveBuffer.Clear();
+
             try
             {
-                while (!token.IsCancellationRequested && networkStream != null)
+                while (!token.IsCancellationRequested)
                 {
-                    int bytesRead = await networkStream.ReadAsync(buffer, 0, buffer.Length, token);
+                    var stream = networkStream;
+                    if (stream == null) break;
+
+                    int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, token);
                     if (bytesRead <= 0) break;
 
-                    byte[] received = new byte[bytesRead];
-                    Array.Copy(buffer, 0, received, 0, bytesRead);
+                    for (int i = 0; i < bytesRead; i++)
+                    {
+                        receiveBuffer.Add(buffer[i]);
+                    }
 
+                    extractedFrames.Clear();
+                    KocomProtocol.ExtractFrames(receiveBuffer, extractedFrames);
+                    if (extractedFrames.Count == 0) continue;
+
+                    var frames = extractedFrames.ToArray();
                     UnityMainThreadDispatcher.Enqueue(() =>
                     {
-                        string hexStr = KocomProtocol.ToHexString(received);
-                        OnLogMessage?.Invoke($"[RX] {hexStr}", false);
-                        OnPacketReceived?.Invoke(received);
+                        foreach (var frame in frames)
+                        {
+                            OnLogMessage?.Invoke($"[RX] {KocomProtocol.ToHexString(frame)}", false);
+                            OnPacketReceived?.Invoke(frame);
+                        }
                     });
                 }
             }
+            catch (OperationCanceledException)
+            {
+            }
             catch
             {
-                // Disconnected or cancelled
             }
             finally
             {
                 UnityMainThreadDispatcher.Enqueue(() =>
                 {
-                    isConnected = false;
-                    OnConnectionStatusChanged?.Invoke(false);
-                    OnLogMessage?.Invoke("[네트워크] 아두이노와의 연결이 종료되었습니다.", false);
+                    if (!useSimulationMode)
+                    {
+                        isConnected = false;
+                        OnConnectionStatusChanged?.Invoke(false);
+                        OnLogMessage?.Invoke("[네트워크] 아두이노와의 연결이 종료되었습니다.", false);
+                    }
                 });
             }
         }

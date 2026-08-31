@@ -1,113 +1,243 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
 namespace Homepad.Core
 {
     /// <summary>
-    /// 코콤(KOCOM) RS-485 통신 패킷 정의 및 인코딩/디코딩 유틸리티
+    /// 코콤 RS-485 21바이트 프레임.
+    /// AA 55 | TYPE | SRC | DST | ROOM | VALUE[8] | CS | 0D 0D
+    /// TYPE 0x30BC 월패드 송신, 0x30DC 장치 보고.
+    /// CS = bytes[2..17] 합 modulo 256.
     /// </summary>
     public static class KocomProtocol
     {
-        public const byte HEADER_1 = 0xAA;
-        public const byte HEADER_2 = 0x55;
+        public const int PacketSize = 21;
+        public const byte Header1 = 0xAA;
+        public const byte Header2 = 0x55;
+        public const byte Trailer = 0x0D;
 
-        // 장치 타입 코드 정의
-        public const byte DEVICE_LIGHT = 0x0E;       // 조명
-        public const byte DEVICE_HEATING = 0x36;     // 난방
-        public const byte DEVICE_GAS = 0x2C;         // 가스
-        public const byte DEVICE_VENTILATION = 0x48; // 환기
-        public const byte DEVICE_ELEVATOR = 0x44;    // 엘리베이터
+        public const ushort TypeTransmit = 0x30BC;
+        public const ushort TypeReport = 0x30DC;
+        public const ushort AddressWallpad = 0x0001;
+        public const ushort DeviceLight = 0x000E;
+        public const ushort DeviceHeating = 0x0036;
+        public const ushort DeviceGas = 0x002C;
+        public const ushort DeviceVentilation = 0x0048;
+        public const ushort DeviceElevator = 0x0044;
 
-        // 명령 코드
-        public const byte CMD_READ = 0x00;           // 상태 요청
-        public const byte CMD_WRITE = 0x01;          // 제어 명령
-        public const byte CMD_REPORT = 0x02;         // 상태 보고
+        public const byte LightOn = 0xFF;
+        public const byte LightOff = 0x00;
+        public const byte HeatPowerOn0 = 0x11;
+        public const byte HeatPowerOn1 = 0x00;
+        public const byte HeatPowerOff0 = 0x00;
+        public const byte HeatPowerOff1 = 0x01;
+        public const byte HeatAway0 = 0x11;
+        public const byte HeatAway1 = 0x01;
 
-        /// <summary>
-        /// RS-485 송신용 패킷 생성 (헤더 + 장치타입 + ID + 명령 + 데이터 + 체크섬)
-        /// </summary>
-        public static byte[] BuildPacket(byte deviceType, byte targetId, byte command, byte[] data)
+        public struct Frame
         {
-            int dataLen = data != null ? data.Length : 0;
-            byte[] packet = new byte[6 + dataLen];
+            public ushort type;
+            public ushort source;
+            public ushort destination;
+            public ushort room;
+            public byte[] value;
+            public byte checksum;
 
-            packet[0] = HEADER_1;
-            packet[1] = HEADER_2;
-            packet[2] = deviceType;
-            packet[3] = targetId;
-            packet[4] = command;
-
-            if (data != null && dataLen > 0)
+            public ushort DeviceAddress
             {
-                Array.Copy(data, 0, packet, 5, dataLen);
+                get
+                {
+                    if (IsKnownDevice(destination)) return destination;
+                    if (IsKnownDevice(source)) return source;
+                    return destination;
+                }
+            }
+        }
+
+        public static bool IsKnownDevice(ushort address)
+        {
+            return address == DeviceLight
+                || address == DeviceHeating
+                || address == DeviceGas
+                || address == DeviceVentilation
+                || address == DeviceElevator;
+        }
+
+        public static byte[] BuildFrame(ushort destination, ushort room, byte[] value8, ushort source = AddressWallpad, ushort type = TypeTransmit)
+        {
+            byte[] value = new byte[8];
+            if (value8 != null)
+            {
+                int copy = Math.Min(8, value8.Length);
+                Array.Copy(value8, value, copy);
             }
 
-            // 체크섬 계산 (Header 제외한 바이트 합 modulo 256)
-            byte sum = 0;
-            for (int i = 2; i < packet.Length - 1; i++)
-            {
-                sum += packet[i];
-            }
-            packet[packet.Length - 1] = sum;
-
+            byte[] packet = new byte[PacketSize];
+            packet[0] = Header1;
+            packet[1] = Header2;
+            WriteUInt16(packet, 2, type);
+            WriteUInt16(packet, 4, source);
+            WriteUInt16(packet, 6, destination);
+            WriteUInt16(packet, 8, room);
+            Array.Copy(value, 0, packet, 10, 8);
+            packet[18] = ComputeChecksum(packet);
+            packet[19] = Trailer;
+            packet[20] = Trailer;
             return packet;
         }
 
-        /// <summary>
-        /// 조명 On/Off 제어 패킷 생성
-        /// </summary>
-        public static byte[] CreateLightControlPacket(int lightId, bool turnOn)
+        public static byte[] CreateLightRoomPacket(ushort room, IList<LightState> lightsInRoom)
         {
-            return BuildPacket(DEVICE_LIGHT, (byte)lightId, CMD_WRITE, new byte[] { (byte)(turnOn ? 0xFF : 0x00) });
+            byte[] value = new byte[8];
+            if (lightsInRoom != null)
+            {
+                for (int i = 0; i < lightsInRoom.Count; i++)
+                {
+                    var light = lightsInRoom[i];
+                    if (light.slot >= 0 && light.slot < 8)
+                    {
+                        value[light.slot] = light.isOn ? LightOn : LightOff;
+                    }
+                }
+            }
+            return BuildFrame(DeviceLight, room, value);
         }
 
-        /// <summary>
-        /// 난방 제어 패킷 생성 (설정온도, 전원/외출)
-        /// </summary>
-        public static byte[] CreateHeatingControlPacket(int roomId, bool power, bool awayMode, float targetTemp)
+        public static byte[] CreateHeatingControlPacket(ushort room, bool power, bool awayMode, float targetTemp)
         {
-            byte modeByte = (byte)(!power ? 0x00 : (awayMode ? 0x02 : 0x01));
-            byte tempByte = (byte)Mathf.Clamp(Mathf.RoundToInt(targetTemp), 10, 40);
-            return BuildPacket(DEVICE_HEATING, (byte)roomId, CMD_WRITE, new byte[] { modeByte, tempByte });
+            byte temp = (byte)Mathf.Clamp(Mathf.RoundToInt(targetTemp), 5, 40);
+            byte[] value = new byte[8];
+            if (!power)
+            {
+                value[0] = HeatPowerOff0;
+                value[1] = HeatPowerOff1;
+            }
+            else if (awayMode)
+            {
+                value[0] = HeatAway0;
+                value[1] = HeatAway1;
+            }
+            else
+            {
+                value[0] = HeatPowerOn0;
+                value[1] = HeatPowerOn1;
+            }
+            value[2] = temp;
+            return BuildFrame(DeviceHeating, room, value);
         }
 
-        /// <summary>
-        /// 가스 밸브 잠금 패킷 생성 (안전을 위해 잠금 제어만 허용)
-        /// </summary>
         public static byte[] CreateGasClosePacket()
         {
-            return BuildPacket(DEVICE_GAS, 0x01, CMD_WRITE, new byte[] { 0x00 }); // 0x00: 잠금
+            return BuildFrame(DeviceGas, 0x0001, new byte[8]);
         }
 
-        /// <summary>
-        /// 환기 풍량 제어 패킷 생성
-        /// </summary>
         public static byte[] CreateVentilationPacket(VentilationSpeed speed)
         {
-            return BuildPacket(DEVICE_VENTILATION, 0x01, CMD_WRITE, new byte[] { (byte)speed });
+            return BuildFrame(DeviceVentilation, 0x0001, new byte[] { (byte)speed, 0, 0, 0, 0, 0, 0, 0 });
         }
 
-        /// <summary>
-        /// 엘리베이터 호출 패킷 생성
-        /// </summary>
-        public static byte[] CreateElevatorCallPacket(int targetFloor)
+        public static byte[] CreateElevatorCallPacket()
         {
-            return BuildPacket(DEVICE_ELEVATOR, 0x01, CMD_WRITE, new byte[] { (byte)targetFloor });
+            return BuildFrame(DeviceElevator, 0x0001, new byte[8]);
         }
 
-        /// <summary>
-        /// 바이트 배열을 16진수 문자열로 변환 (로그 및 디버깅용)
-        /// </summary>
+        public static bool TryParse(byte[] raw, out Frame frame)
+        {
+            frame = default;
+            if (raw == null || raw.Length < PacketSize) return false;
+            if (raw[0] != Header1 || raw[1] != Header2) return false;
+            if (raw[19] != Trailer || raw[20] != Trailer) return false;
+            if (ComputeChecksum(raw) != raw[18]) return false;
+
+            frame.type = ReadUInt16(raw, 2);
+            frame.source = ReadUInt16(raw, 4);
+            frame.destination = ReadUInt16(raw, 6);
+            frame.room = ReadUInt16(raw, 8);
+            frame.value = new byte[8];
+            Array.Copy(raw, 10, frame.value, 0, 8);
+            frame.checksum = raw[18];
+            return true;
+        }
+
+        public static void ExtractFrames(List<byte> buffer, List<byte[]> output)
+        {
+            if (buffer == null || output == null) return;
+
+            while (buffer.Count >= 2)
+            {
+                int start = -1;
+                for (int i = 0; i < buffer.Count - 1; i++)
+                {
+                    if (buffer[i] == Header1 && buffer[i + 1] == Header2)
+                    {
+                        start = i;
+                        break;
+                    }
+                }
+
+                if (start < 0)
+                {
+                    buffer.Clear();
+                    return;
+                }
+
+                if (start > 0)
+                {
+                    buffer.RemoveRange(0, start);
+                }
+
+                if (buffer.Count < PacketSize)
+                {
+                    return;
+                }
+
+                byte[] candidate = new byte[PacketSize];
+                buffer.CopyTo(0, candidate, 0, PacketSize);
+                if (TryParse(candidate, out _))
+                {
+                    output.Add(candidate);
+                    buffer.RemoveRange(0, PacketSize);
+                }
+                else
+                {
+                    buffer.RemoveAt(0);
+                }
+            }
+        }
+
         public static string ToHexString(byte[] bytes)
         {
             if (bytes == null || bytes.Length == 0) return string.Empty;
-            StringBuilder sb = new StringBuilder(bytes.Length * 3);
-            foreach (byte b in bytes)
+            var sb = new StringBuilder(bytes.Length * 3);
+            for (int i = 0; i < bytes.Length; i++)
             {
-                sb.Append(b.ToString("X2")).Append(" ");
+                if (i > 0) sb.Append(' ');
+                sb.Append(bytes[i].ToString("X2"));
             }
-            return sb.ToString().TrimEnd();
+            return sb.ToString();
+        }
+
+        public static byte ComputeChecksum(byte[] packet)
+        {
+            int sum = 0;
+            for (int i = 2; i <= 17; i++)
+            {
+                sum += packet[i];
+            }
+            return (byte)(sum & 0xFF);
+        }
+
+        private static void WriteUInt16(byte[] packet, int index, ushort value)
+        {
+            packet[index] = (byte)((value >> 8) & 0xFF);
+            packet[index + 1] = (byte)(value & 0xFF);
+        }
+
+        private static ushort ReadUInt16(byte[] packet, int index)
+        {
+            return (ushort)((packet[index] << 8) | packet[index + 1]);
         }
     }
 }

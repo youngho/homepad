@@ -1,40 +1,38 @@
 using System;
-using System.Collections.Generic;
 
 namespace Homepad.Core
 {
-    /// <summary>
-    /// 개별 조명 상태 데이터 모델
-    /// </summary>
     [Serializable]
     public class LightState
     {
         public int id;
         public string name;
         public bool isOn;
+        public ushort roomCode;
+        public int slot;
 
-        public LightState(int id, string name, bool isOn = false)
+        public LightState(int id, string name, bool isOn = false, ushort roomCode = 0x0001, int slot = 0)
         {
             this.id = id;
             this.name = name;
             this.isOn = isOn;
+            this.roomCode = roomCode;
+            this.slot = slot;
         }
     }
 
-    /// <summary>
-    /// 개별 방 난방 상태 데이터 모델
-    /// </summary>
     [Serializable]
     public class HeatingState
     {
         public int roomId;
         public string roomName;
         public bool isPowered;
-        public bool isAwayMode; // 외출 모드
+        public bool isAwayMode;
         public float currentTemp;
         public float targetTemp;
+        public ushort roomCode;
 
-        public HeatingState(int roomId, string roomName, float currentTemp = 22f, float targetTemp = 24f)
+        public HeatingState(int roomId, string roomName, float currentTemp = 22f, float targetTemp = 24f, ushort roomCode = 0x0001)
         {
             this.roomId = roomId;
             this.roomName = roomName;
@@ -42,12 +40,10 @@ namespace Homepad.Core
             this.isAwayMode = false;
             this.currentTemp = currentTemp;
             this.targetTemp = targetTemp;
+            this.roomCode = roomCode;
         }
     }
 
-    /// <summary>
-    /// 가스 밸브 상태
-    /// </summary>
     [Serializable]
     public class GasState
     {
@@ -59,9 +55,6 @@ namespace Homepad.Core
         }
     }
 
-    /// <summary>
-    /// 환기 시스템 상태 (0: Off, 1: 미풍, 2: 약풍, 3: 강풍)
-    /// </summary>
     public enum VentilationSpeed
     {
         Off = 0,
@@ -83,9 +76,6 @@ namespace Homepad.Core
         }
     }
 
-    /// <summary>
-    /// 엘리베이터 상태
-    /// </summary>
     public enum ElevatorDirection
     {
         Stop,
