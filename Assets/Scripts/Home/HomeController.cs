@@ -176,19 +176,35 @@ namespace Homepad.Home
 
         public void BeginPlacement(HomeItemDef def)
         {
-            if (def == null) return;
-            if (layout.IsCatalogBlocked(def)) return;
+            PlaceFromCatalog(def);
+        }
+
+        public bool PlaceFromCatalog(HomeItemDef def)
+        {
+            if (def == null) return false;
+            if (layout.IsCatalogBlocked(def)) return false;
             CancelPlacement();
-            pendingDef = def;
-            createdRoomForPlace = layout.FindRoom(def.RoomHint) == null;
-            if (def.Kind != HomeItemKind.ElectricCurtain || layout.Rooms.Count == 0)
+
+            RoomRecord room;
+            if (def.Kind == HomeItemKind.ElectricCurtain && layout.Rooms.Count > 0)
             {
-                service.EnsureRoom(def.RoomHint);
+                room = layout.Rooms[0];
             }
+            else
+            {
+                room = service.EnsureRoom(def.RoomHint);
+            }
+
+            var cell = service.DefaultCell(def, room);
+            int wallDir = service.DefaultWallDir(def, room, cell);
+            var item = service.Place(def, cell, wallDir);
+            if (item == null) return false;
 
             builder.Rebuild();
             FrameCamera();
+            Save();
             LayoutChanged?.Invoke();
+            return true;
         }
 
         public void CancelPlacement()
