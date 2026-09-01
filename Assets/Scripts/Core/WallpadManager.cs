@@ -215,6 +215,39 @@ namespace Homepad.Core
             RaiseStateChanged();
         }
 
+        public LightState AddLight(string name, ushort roomCode)
+        {
+            int slot = 0;
+            int id = 1;
+            for (int i = 0; i < lights.Count; i++)
+            {
+                if (lights[i].id >= id) id = lights[i].id + 1;
+                if (lights[i].roomCode == roomCode && lights[i].slot >= slot) slot = lights[i].slot + 1;
+            }
+
+            var light = new LightState(id, string.IsNullOrEmpty(name) ? "조명" : name, false, roomCode, slot);
+            lights.Add(light);
+            RaiseStateChanged();
+            return light;
+        }
+
+        public HeatingState AddHeatingRoom(string roomName, ushort roomCode)
+        {
+            var existing = heatingRooms.Find(item => item.roomCode == roomCode);
+            if (existing != null) return existing;
+
+            int id = 1;
+            for (int i = 0; i < heatingRooms.Count; i++)
+            {
+                if (heatingRooms[i].roomId >= id) id = heatingRooms[i].roomId + 1;
+            }
+
+            var room = new HeatingState(id, string.IsNullOrEmpty(roomName) ? "방" : roomName, 22f, 24f, roomCode);
+            heatingRooms.Add(room);
+            RaiseStateChanged();
+            return room;
+        }
+
         public void ToggleAwayMode()
         {
             SetAwayMode(!isAwayMode);

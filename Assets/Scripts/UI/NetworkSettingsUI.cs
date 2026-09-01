@@ -20,6 +20,19 @@ namespace Homepad.UI
         [SerializeField] private Text logText;
 
         private readonly StringBuilder logBuilder = new StringBuilder();
+
+        public void Bind(InputField ip, InputField port, Toggle simulation, Button apply, Button clear, Text status, Image dot, Text log)
+        {
+            ipInput = ip;
+            portInput = port;
+            simulationToggle = simulation;
+            applyButton = apply;
+            clearLogButton = clear;
+            statusText = status;
+            statusDot = dot;
+            logText = log;
+        }
+
         private int logLineCount;
         private const int MaxLogLines = 50;
 

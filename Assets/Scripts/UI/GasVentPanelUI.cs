@@ -20,6 +20,23 @@ namespace Homepad.UI
         [SerializeField] private Button medButton;
         [SerializeField] private Button highButton;
 
+        public void Bind(Text gasStatusText, Image indicator, Button closeButton, Text ventilationText, Button off, Button low, Button med, Button high)
+        {
+            gasStatus = gasStatusText;
+            gasIndicator = indicator;
+            gasCloseButton = closeButton;
+            ventText = ventilationText;
+            offButton = off;
+            lowButton = low;
+            medButton = med;
+            highButton = high;
+        }
+
+        private void OnEnable()
+        {
+            RefreshAll();
+        }
+
         private void Start()
         {
             Bind(gasCloseButton, () => WallpadManager.Instance.CloseGasValve());

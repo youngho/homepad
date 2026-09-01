@@ -1,0 +1,30 @@
+---
+description: Unity UI는 씬/프리팹에서 만들고, 코드로 위젯을 조립하지 않는다.
+alwaysApply: true
+---
+
+# Unity UI는 씬에서 작업한다
+
+월패드 HUD는 이미 `Assets/Scenes/WallpadMain.unity`의 `Canvas/WallpadRoot`에 있다.
+레이아웃·색·카피·버튼 배치는 **Hierarchy + Inspector**에서 고친다. 플레이 중에 셸 UI를 만들지 않는다.
+
+스크립트는 Inspector에 끌어서 넣은 참조만 바인딩/갱신한다.
+
+금지:
+- `new GameObject` + `AddComponent<Image/Text/Button>`로 HUD 조립
+- `WallpadUiFactory` 같은 런타임 UI 팩토리
+- Editor 메뉴로 HUD 전체를 코드에서 다시 굽기 (씬에서 손본 내용이 날아감)
+- 유저가 “UI 고쳐줘”라고 해도 코드로 위젯을 생성하지 말 것. 씬 오브젝트를 수정하거나, Unity MCP `ManageGameObject`로 **기존 씬 객체**를 편집한다.
+
+```csharp
+// BAD — 플레이 중에 HUD를 코드로 생성
+var header = new GameObject("Header", typeof(RectTransform), typeof(Image));
+
+// GOOD — 씬에 Header/Away가 있고, 스크립트는 참조만 사용
+[SerializeField] Button awayButton;
+awayButton.onClick.AddListener(ToggleAway);
+```
+
+목록처럼 개수가 늘어나는 칸(카탈로그 슬롯 등)도 씬에 미리 두거나 **씬/프리팹 원본을 Instantiate**한다. 위젯 자체를 코드로 그리지 않는다.
+
+예외: 이소메트릭 집 메쉬처럼 **월드 지오메트리**는 코드 생성이 가능하다. UI 캔버스는 해당하지 않는다.

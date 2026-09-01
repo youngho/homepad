@@ -1,6 +1,7 @@
-using System;
 using Homepad.Core;
+using Homepad.Home;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace Homepad.UI
@@ -15,87 +16,135 @@ namespace Homepad.UI
         Settings
     }
 
+    [DefaultExecutionOrder(50)]
     public class WallpadUIController : MonoBehaviour
     {
-        private static readonly Color TabIdle = new Color(0.10f, 0.12f, 0.16f, 1f);
-        private static readonly Color TabActive = new Color(0.18f, 0.45f, 0.90f, 1f);
-        private static readonly Color Ok = new Color(0.20f, 0.62f, 0.38f, 1f);
-
-        [SerializeField] private GameObject[] panels;
-        [SerializeField] private Image[] tabImages;
-        [SerializeField] private Button[] tabButtons;
-        [SerializeField] private Text summaryLight;
-        [SerializeField] private Text summaryTemp;
-        [SerializeField] private Text summaryGas;
-        [SerializeField] private Text summaryVent;
-        [SerializeField] private Text awayButtonText;
+        [SerializeField] private Text houseTitle;
         [SerializeField] private Image wifiDot;
         [SerializeField] private Text wifiText;
-        [SerializeField] private Button allOffButton;
-        [SerializeField] private Button gasCloseButton;
         [SerializeField] private Button awayButton;
-        [SerializeField] private Button elevatorButton;
+        [SerializeField] private Text awayButtonText;
+        [SerializeField] private Text hintText;
+        [SerializeField] private Button cutawayButton;
+        [SerializeField] private Text cutawayText;
+        [SerializeField] private Button hexButton;
+        [SerializeField] private Button settingsButton;
+        [SerializeField] private Button settingsCloseButton;
+        [SerializeField] private GameObject settingsPanel;
+        [SerializeField] private DeviceOverlayUI overlay;
+        [SerializeField] private ItemCatalogUI catalog;
 
-        private WallpadTab currentTab = WallpadTab.Dashboard;
-        private Action<bool> awayHandler;
+        private void Awake()
+        {
+            HomeController.EnsureExists();
+        }
 
         private void Start()
         {
-            for (int i = 0; i < tabButtons.Length; i++)
+            Bind(awayButton, () => WallpadManager.Instance.ToggleAwayMode());
+            Bind(cutawayButton, ToggleCutaway);
+            Bind(hexButton, () => SceneManager.LoadScene("KocomHexTest"));
+            Bind(settingsButton, ToggleSettings);
+            Bind(settingsCloseButton, () =>
             {
-                int index = i;
-                if (tabButtons[i] == null) continue;
-                tabButtons[i].onClick.RemoveAllListeners();
-                tabButtons[i].onClick.AddListener(() => SwitchTab((WallpadTab)index));
+                if (settingsPanel != null) settingsPanel.SetActive(false);
+            });
+
+            if (houseTitle != null && WallpadManager.Instance != null)
+            {
+                string house = WallpadManager.Instance.Config != null
+                    ? WallpadManager.Instance.Config.householdName
+                    : "우리집";
+                houseTitle.text = $"{house}  ·  {WallpadManager.Instance.HouseholdFloor}층";
             }
 
-            Bind(allOffButton, () => WallpadManager.Instance.TurnOffAllLights());
-            Bind(gasCloseButton, () => WallpadManager.Instance.CloseGasValve());
-            Bind(awayButton, () => WallpadManager.Instance.ToggleAwayMode());
-            Bind(elevatorButton, () => WallpadManager.Instance.CallElevator());
+            var home = HomeController.Instance;
+            if (home != null)
+            {
+                home.ItemClicked += OnItemClicked;
+                home.OverlayDismissed += OnOverlayDismissed;
+                home.LayoutChanged += RefreshHint;
+            }
 
             Subscribe();
-            SwitchTab(WallpadTab.Dashboard);
-            RefreshDashboard();
+            RefreshAway();
+            RefreshHint();
+            RefreshCutaway();
+            catalog?.Refresh();
         }
 
         private void OnDestroy()
         {
-            if (WallpadManager.Instance == null) return;
-            WallpadManager.Instance.OnStateChanged -= RefreshDashboard;
-            if (awayHandler != null)
+            var home = HomeController.Instance;
+            if (home != null)
             {
-                WallpadManager.Instance.OnAwayModeChanged -= awayHandler;
+                home.ItemClicked -= OnItemClicked;
+                home.OverlayDismissed -= OnOverlayDismissed;
+                home.LayoutChanged -= RefreshHint;
             }
 
+            if (WallpadManager.Instance == null) return;
+            WallpadManager.Instance.OnStateChanged -= RefreshAway;
+            WallpadManager.Instance.OnAwayModeChanged -= OnAwayChanged;
             if (WallpadManager.Instance.Connector != null)
             {
                 WallpadManager.Instance.Connector.OnConnectionStatusChanged -= UpdateWifi;
             }
         }
 
-        public void SwitchTab(WallpadTab newTab)
+        private void OnAwayChanged(bool _)
         {
-            currentTab = newTab;
-            for (int i = 0; i < panels.Length; i++)
-            {
-                if (panels[i] != null) panels[i].SetActive(i == (int)newTab);
-            }
+            RefreshAway();
+        }
 
-            for (int i = 0; i < tabImages.Length; i++)
+        private void OnItemClicked(PlacedItem item)
+        {
+            overlay?.Show(item);
+        }
+
+        private void OnOverlayDismissed()
+        {
+            overlay?.Hide();
+            if (settingsPanel != null) settingsPanel.SetActive(false);
+        }
+
+        private void ToggleCutaway()
+        {
+            var home = HomeController.Instance;
+            if (home == null) return;
+            home.SetCutaway(!home.Layout.Cutaway);
+            RefreshCutaway();
+        }
+
+        private void ToggleSettings()
+        {
+            if (settingsPanel == null) return;
+            bool show = !settingsPanel.activeSelf;
+            overlay?.Hide();
+            settingsPanel.SetActive(show);
+        }
+
+        private void RefreshCutaway()
+        {
+            bool cut = HomeController.Instance == null || HomeController.Instance.Layout.Cutaway;
+            if (cutawayText != null) cutawayText.text = cut ? "지붕 보기" : "컷어웨이";
+        }
+
+        private void RefreshHint()
+        {
+            bool empty = HomeController.Instance == null
+                         || HomeController.Instance.Layout.Rooms.Count == 0;
+            if (hintText != null)
             {
-                if (tabImages[i] != null) tabImages[i].color = i == (int)newTab ? TabActive : TabIdle;
+                hintText.gameObject.SetActive(empty);
             }
         }
 
         private void Subscribe()
         {
             if (WallpadManager.Instance == null) return;
-
-            WallpadManager.Instance.OnStateChanged += RefreshDashboard;
-            awayHandler = _ => RefreshDashboard();
-            WallpadManager.Instance.OnAwayModeChanged += awayHandler;
-
+            WallpadManager.Instance.OnStateChanged += RefreshAway;
+            WallpadManager.Instance.OnAwayModeChanged += OnAwayChanged;
             if (WallpadManager.Instance.Connector != null)
             {
                 WallpadManager.Instance.Connector.OnConnectionStatusChanged += UpdateWifi;
@@ -103,48 +152,18 @@ namespace Homepad.UI
             }
         }
 
-        private void RefreshDashboard()
+        private void RefreshAway()
         {
-            if (WallpadManager.Instance == null) return;
-
-            int lightsOn = 0;
-            foreach (var light in WallpadManager.Instance.Lights)
+            if (awayButtonText != null && WallpadManager.Instance != null)
             {
-                if (light.isOn) lightsOn++;
-            }
-
-            if (summaryLight != null)
-            {
-                summaryLight.text = $"{lightsOn} / {WallpadManager.Instance.Lights.Count} 켜짐";
-            }
-
-            float sum = 0;
-            var rooms = WallpadManager.Instance.HeatingRooms;
-            foreach (var room in rooms) sum += room.currentTemp;
-            float avg = rooms.Count > 0 ? sum / rooms.Count : 22f;
-            if (summaryTemp != null) summaryTemp.text = $"{avg:F1}℃";
-
-            if (summaryGas != null)
-            {
-                summaryGas.text = WallpadManager.Instance.Gas.isOpen ? "열림 (주의)" : "안전 잠금";
-            }
-
-            if (summaryVent != null)
-            {
-                var vent = WallpadManager.Instance.Ventilation;
-                summaryVent.text = vent.isPowered ? $"가동 ({SpeedName(vent.speed)})" : "정지";
-            }
-
-            if (awayButtonText != null)
-            {
-                awayButtonText.text = WallpadManager.Instance.IsAwayMode ? "외출 모드 ON" : "외출 모드 OFF";
+                awayButtonText.text = WallpadManager.Instance.IsAwayMode ? "외출 ON" : "외출";
             }
         }
 
         private void UpdateWifi(bool isConnected)
         {
             bool sim = WallpadManager.Instance != null && WallpadManager.Instance.Connector != null && WallpadManager.Instance.Connector.UseSimulationMode;
-            Color color = isConnected ? Ok : new Color(0.9f, 0.3f, 0.3f);
+            Color color = isConnected ? new Color(0.337f, 0.588f, 0.408f) : new Color(0.753f, 0.337f, 0.337f);
             if (wifiDot != null) wifiDot.color = color;
             if (wifiText != null)
             {
@@ -158,17 +177,6 @@ namespace Homepad.UI
             if (button == null) return;
             button.onClick.RemoveAllListeners();
             button.onClick.AddListener(action);
-        }
-
-        private static string SpeedName(VentilationSpeed speed)
-        {
-            return speed switch
-            {
-                VentilationSpeed.Low => "미풍",
-                VentilationSpeed.Medium => "약풍",
-                VentilationSpeed.High => "강풍",
-                _ => "정지"
-            };
         }
     }
 }

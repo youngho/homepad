@@ -12,6 +12,20 @@ namespace Homepad.UI
         [SerializeField] private Text statusText;
         [SerializeField] private Text titleText;
 
+        public void Bind(Button call, Text callText, Text floor, Text status, Text title)
+        {
+            callButton = call;
+            callButtonText = callText;
+            floorText = floor;
+            statusText = status;
+            titleText = title;
+        }
+
+        private void OnEnable()
+        {
+            RefreshAll();
+        }
+
         private void Start()
         {
             if (titleText != null && WallpadManager.Instance != null)

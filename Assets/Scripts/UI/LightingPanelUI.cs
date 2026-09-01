@@ -23,25 +23,25 @@ namespace Homepad.UI
             public Text statusText;
         }
 
+        public void Focus(int lightId)
+        {
+            if (lights != null && lights.Length > 0)
+            {
+                lights[0].lightId = lightId;
+            }
+
+            BindClicks();
+            RefreshAll();
+        }
+
+        private void OnEnable()
+        {
+            RefreshAll();
+        }
+
         private void Start()
         {
-            if (allOffButton != null)
-            {
-                allOffButton.onClick.RemoveAllListeners();
-                allOffButton.onClick.AddListener(() => WallpadManager.Instance.TurnOffAllLights());
-            }
-
-            if (lights != null)
-            {
-                for (int i = 0; i < lights.Length; i++)
-                {
-                    int lightId = lights[i].lightId;
-                    if (lights[i].button == null) continue;
-                    lights[i].button.onClick.RemoveAllListeners();
-                    lights[i].button.onClick.AddListener(() => WallpadManager.Instance.ToggleLight(lightId));
-                }
-            }
-
+            BindClicks();
             if (WallpadManager.Instance != null)
             {
                 WallpadManager.Instance.OnStateChanged += RefreshAll;
@@ -83,6 +83,24 @@ namespace Homepad.UI
                     var image = slot.button.GetComponent<Image>();
                     if (image != null) image.color = isOn ? OnBg : OffBg;
                 }
+            }
+        }
+
+        private void BindClicks()
+        {
+            if (allOffButton != null)
+            {
+                allOffButton.onClick.RemoveAllListeners();
+                allOffButton.onClick.AddListener(() => WallpadManager.Instance.TurnOffAllLights());
+            }
+
+            if (lights == null) return;
+            for (int i = 0; i < lights.Length; i++)
+            {
+                int lightId = lights[i].lightId;
+                if (lights[i].button == null) continue;
+                lights[i].button.onClick.RemoveAllListeners();
+                lights[i].button.onClick.AddListener(() => WallpadManager.Instance.ToggleLight(lightId));
             }
         }
 

@@ -23,30 +23,25 @@ namespace Homepad.UI
             public Text awayText;
         }
 
-        private void Start()
+        public void Focus(int roomId)
         {
-            if (rooms != null)
+            if (rooms != null && rooms.Length > 0)
             {
-                for (int i = 0; i < rooms.Length; i++)
-                {
-                    int roomId = rooms[i].roomId;
-                    Bind(rooms[i].downButton, () =>
-                    {
-                        var room = FindRoom(roomId);
-                        if (room == null) return;
-                        WallpadManager.Instance.SetHeatingTargetTemp(roomId, room.targetTemp - 0.5f);
-                    });
-                    Bind(rooms[i].upButton, () =>
-                    {
-                        var room = FindRoom(roomId);
-                        if (room == null) return;
-                        WallpadManager.Instance.SetHeatingTargetTemp(roomId, room.targetTemp + 0.5f);
-                    });
-                    Bind(rooms[i].powerButton, () => WallpadManager.Instance.ToggleHeatingPower(roomId));
-                    Bind(rooms[i].awayButton, () => WallpadManager.Instance.ToggleHeatingAway(roomId));
-                }
+                rooms[0].roomId = roomId;
             }
 
+            BindClicks();
+            RefreshAll();
+        }
+
+        private void OnEnable()
+        {
+            RefreshAll();
+        }
+
+        private void Start()
+        {
+            BindClicks();
             if (WallpadManager.Instance != null)
             {
                 WallpadManager.Instance.OnStateChanged += RefreshAll;
@@ -75,11 +70,47 @@ namespace Homepad.UI
                 if (slot.targetTempText != null) slot.targetTempText.text = $"{room.targetTemp:F1}℃";
                 if (slot.powerText != null) slot.powerText.text = room.isPowered ? "난방 켬" : "난방 끔";
                 if (slot.awayText != null) slot.awayText.text = room.isAwayMode ? "외출 중" : "일반";
+
+                if (slot.powerButton != null)
+                {
+                    var image = slot.powerButton.GetComponent<Image>();
+                    if (image != null) image.color = room.isPowered ? new Color(0.337f, 0.588f, 0.408f) : new Color(0.10f, 0.12f, 0.16f);
+                }
+
+                if (slot.awayButton != null)
+                {
+                    var image = slot.awayButton.GetComponent<Image>();
+                    if (image != null) image.color = room.isAwayMode ? new Color(0.455f, 0.612f, 0.773f) : new Color(0.10f, 0.12f, 0.16f);
+                }
+            }
+        }
+
+        private void BindClicks()
+        {
+            if (rooms == null) return;
+            for (int i = 0; i < rooms.Length; i++)
+            {
+                int roomId = rooms[i].roomId;
+                BindButton(rooms[i].downButton, () =>
+                {
+                    var room = FindRoom(roomId);
+                    if (room == null) return;
+                    WallpadManager.Instance.SetHeatingTargetTemp(roomId, room.targetTemp - 0.5f);
+                });
+                BindButton(rooms[i].upButton, () =>
+                {
+                    var room = FindRoom(roomId);
+                    if (room == null) return;
+                    WallpadManager.Instance.SetHeatingTargetTemp(roomId, room.targetTemp + 0.5f);
+                });
+                BindButton(rooms[i].powerButton, () => WallpadManager.Instance.ToggleHeatingPower(roomId));
+                BindButton(rooms[i].awayButton, () => WallpadManager.Instance.ToggleHeatingAway(roomId));
             }
         }
 
         private static HeatingState FindRoom(int roomId)
         {
+            if (WallpadManager.Instance == null) return null;
             var list = WallpadManager.Instance.HeatingRooms;
             for (int i = 0; i < list.Count; i++)
             {
@@ -89,7 +120,7 @@ namespace Homepad.UI
             return null;
         }
 
-        private static void Bind(Button button, UnityEngine.Events.UnityAction action)
+        private static void BindButton(Button button, UnityEngine.Events.UnityAction action)
         {
             if (button == null) return;
             button.onClick.RemoveAllListeners();
