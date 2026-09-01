@@ -1,7 +1,6 @@
 using Homepad.Core;
 using Homepad.Home;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace Homepad.UI
@@ -22,13 +21,7 @@ namespace Homepad.UI
         [SerializeField] private Text houseTitle;
         [SerializeField] private Image wifiDot;
         [SerializeField] private Text wifiText;
-        [SerializeField] private Button awayButton;
-        [SerializeField] private Text awayButtonText;
         [SerializeField] private Text hintText;
-        [SerializeField] private Button cutawayButton;
-        [SerializeField] private Text cutawayText;
-        [SerializeField] private Button hexButton;
-        [SerializeField] private Button settingsButton;
         [SerializeField] private Button settingsCloseButton;
         [SerializeField] private GameObject settingsPanel;
         [SerializeField] private DeviceOverlayUI overlay;
@@ -42,10 +35,6 @@ namespace Homepad.UI
 
         private void Start()
         {
-            Bind(awayButton, () => WallpadManager.Instance.ToggleAwayMode());
-            Bind(cutawayButton, ToggleCutaway);
-            Bind(hexButton, () => SceneManager.LoadScene("KocomHexTest"));
-            Bind(settingsButton, ToggleSettings);
             Bind(settingsCloseButton, () =>
             {
                 if (settingsPanel != null) settingsPanel.SetActive(false);
@@ -68,9 +57,7 @@ namespace Homepad.UI
             }
 
             Subscribe();
-            RefreshAway();
             RefreshHint();
-            RefreshCutaway();
             catalog?.Refresh();
         }
 
@@ -85,17 +72,10 @@ namespace Homepad.UI
             }
 
             if (WallpadManager.Instance == null) return;
-            WallpadManager.Instance.OnStateChanged -= RefreshAway;
-            WallpadManager.Instance.OnAwayModeChanged -= OnAwayChanged;
             if (WallpadManager.Instance.Connector != null)
             {
                 WallpadManager.Instance.Connector.OnConnectionStatusChanged -= UpdateWifi;
             }
-        }
-
-        private void OnAwayChanged(bool _)
-        {
-            RefreshAway();
         }
 
         private void OnItemClicked(PlacedItem item)
@@ -111,29 +91,6 @@ namespace Homepad.UI
             catalogDrawer?.Close();
         }
 
-        private void ToggleCutaway()
-        {
-            var home = HomeController.Instance;
-            if (home == null) return;
-            home.SetCutaway(!home.Layout.Cutaway);
-            RefreshCutaway();
-        }
-
-        private void ToggleSettings()
-        {
-            if (settingsPanel == null) return;
-            bool show = !settingsPanel.activeSelf;
-            overlay?.Hide();
-            catalogDrawer?.Close();
-            settingsPanel.SetActive(show);
-        }
-
-        private void RefreshCutaway()
-        {
-            bool cut = HomeController.Instance == null || HomeController.Instance.Layout.Cutaway;
-            if (cutawayText != null) cutawayText.text = cut ? "지붕 보기" : "컷어웨이";
-        }
-
         private void RefreshHint()
         {
             bool empty = HomeController.Instance == null
@@ -147,20 +104,10 @@ namespace Homepad.UI
         private void Subscribe()
         {
             if (WallpadManager.Instance == null) return;
-            WallpadManager.Instance.OnStateChanged += RefreshAway;
-            WallpadManager.Instance.OnAwayModeChanged += OnAwayChanged;
             if (WallpadManager.Instance.Connector != null)
             {
                 WallpadManager.Instance.Connector.OnConnectionStatusChanged += UpdateWifi;
                 UpdateWifi(WallpadManager.Instance.Connector.IsConnected);
-            }
-        }
-
-        private void RefreshAway()
-        {
-            if (awayButtonText != null && WallpadManager.Instance != null)
-            {
-                awayButtonText.text = WallpadManager.Instance.IsAwayMode ? "외출 ON" : "외출";
             }
         }
 
