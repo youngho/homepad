@@ -44,6 +44,12 @@ namespace Homepad.Home
                 return existing;
             }
 
+            // Scene teardown / play-mode exit must not spawn a leftover MyHome.
+            if (!Application.isPlaying) return null;
+#if UNITY_EDITOR
+            if (!UnityEditor.EditorApplication.isPlayingOrWillChangePlaymode) return null;
+#endif
+
             var go = new GameObject("MyHome");
             return go.AddComponent<HomeController>();
         }

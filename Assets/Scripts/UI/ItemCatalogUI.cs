@@ -31,7 +31,8 @@ namespace Homepad.UI
 
         private void OnDisable()
         {
-            Subscribe(false);
+            var home = HomeController.Instance;
+            if (home != null) home.LayoutChanged -= Refresh;
         }
 
         private void Update()
@@ -64,7 +65,8 @@ namespace Homepad.UI
 
         private void Subscribe(bool on)
         {
-            var home = HomeController.EnsureExists();
+            var home = HomeController.Instance;
+            if (on && home == null) home = HomeController.EnsureExists();
             if (home == null) return;
             home.LayoutChanged -= Refresh;
             if (on) home.LayoutChanged += Refresh;
@@ -95,7 +97,7 @@ namespace Homepad.UI
 
         public void Refresh()
         {
-            var home = HomeController.Instance ?? HomeController.EnsureExists();
+            var home = HomeController.Instance;
             if (buttons == null) return;
             int count = Mathf.Min(buttons.Length, HomeItemDef.Catalog.Length);
             for (int i = 0; i < count; i++)
