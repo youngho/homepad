@@ -33,6 +33,7 @@ namespace Homepad.UI
         [SerializeField] private GameObject settingsPanel;
         [SerializeField] private DeviceOverlayUI overlay;
         [SerializeField] private ItemCatalogUI catalog;
+        [SerializeField] private CatalogDrawerUI catalogDrawer;
 
         private void Awake()
         {
@@ -100,12 +101,14 @@ namespace Homepad.UI
         private void OnItemClicked(PlacedItem item)
         {
             overlay?.Show(item);
+            catalogDrawer?.Close();
         }
 
         private void OnOverlayDismissed()
         {
             overlay?.Hide();
             if (settingsPanel != null) settingsPanel.SetActive(false);
+            catalogDrawer?.Close();
         }
 
         private void ToggleCutaway()
@@ -121,6 +124,7 @@ namespace Homepad.UI
             if (settingsPanel == null) return;
             bool show = !settingsPanel.activeSelf;
             overlay?.Hide();
+            catalogDrawer?.Close();
             settingsPanel.SetActive(show);
         }
 

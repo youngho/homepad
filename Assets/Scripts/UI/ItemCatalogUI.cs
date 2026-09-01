@@ -7,6 +7,7 @@ namespace Homepad.UI
     public class ItemCatalogUI : MonoBehaviour
     {
         [SerializeField] private Button[] buttons;
+        [SerializeField] private CatalogDrawerUI drawer;
 
         private void OnEnable()
         {
@@ -39,6 +40,7 @@ namespace Homepad.UI
                 buttons[i].onClick.AddListener(() =>
                 {
                     HomeController.Instance?.BeginPlacement(HomeItemDef.Catalog[index]);
+                    drawer?.Close();
                 });
             }
         }
