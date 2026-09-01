@@ -74,8 +74,6 @@ namespace Homepad.UI
         private Font uiFontBold;
         private ArduinoConnector connector;
         private string[] lastSeenPorts = new string[0];
-        private readonly List<RaycastResult> raycastHits = new List<RaycastResult>();
-        private int handledClickFrame = -1;
         private bool autoConnectAttempted;
         private bool logDragActive;
         private Vector2 logDragStart;
@@ -134,8 +132,7 @@ namespace Homepad.UI
             Vector2 pos = mouse.position.ReadValue();
             if (mouse.leftButton.wasPressedThisFrame)
             {
-                HandleUiPointerClick(pos);
-                logDragActive = handledClickFrame != Time.frameCount && IsPointerOverLog(pos);
+                logDragActive = IsPointerOverLog(pos);
                 if (logDragActive)
                 {
                     logDragStart = pos;
@@ -356,28 +353,6 @@ namespace Homepad.UI
             AppendLog("[시스템] USB 포트를 찾았습니다. 보드가 준비될 때까지 잠시 기다립니다.", false);
             yield return new WaitForSeconds(1.6f);
             OnConnectClicked();
-        }
-
-        private void HandleUiPointerClick(Vector2 screenPos)
-        {
-            if (handledClickFrame == Time.frameCount) return;
-            var es = EventSystem.current;
-            if (es == null) return;
-
-            var eventData = new PointerEventData(es) { position = screenPos };
-            raycastHits.Clear();
-            es.RaycastAll(eventData, raycastHits);
-
-            Button button = null;
-            for (int i = 0; i < raycastHits.Count; i++)
-            {
-                button = raycastHits[i].gameObject.GetComponentInParent<Button>();
-                if (button != null && button.interactable) break;
-                button = null;
-            }
-
-            if (button == null) return;
-            button.onClick.Invoke();
         }
 
         private T FindUi<T>(string objectName) where T : Component
@@ -1078,12 +1053,7 @@ namespace Homepad.UI
         {
             if (button == null) return;
             button.onClick.RemoveAllListeners();
-            button.onClick.AddListener(() =>
-            {
-                if (handledClickFrame == Time.frameCount) return;
-                handledClickFrame = Time.frameCount;
-                action();
-            });
+            button.onClick.AddListener(action);
         }
 
         private GameObject CreatePresetRowObject(Transform parent, HexPreset preset, int rowIndex)

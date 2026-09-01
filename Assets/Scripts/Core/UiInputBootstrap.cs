@@ -23,7 +23,7 @@ namespace Homepad.Core
 
         public static void ConfigureUiInput()
         {
-            GiveMouseToUi();
+            EnsureUiActionMap();
 
             var eventSystems = Object.FindObjectsByType<EventSystem>(FindObjectsInactive.Include, FindObjectsSortMode.None);
             if (eventSystems.Length == 0)
@@ -31,13 +31,19 @@ namespace Homepad.Core
                 var go = new GameObject("EventSystem");
                 go.AddComponent<EventSystem>();
                 go.AddComponent<InputSystemUIInputModule>();
-                GiveMouseToUi();
                 return;
             }
 
             for (int i = 0; i < eventSystems.Length; i++)
             {
                 var eventSystem = eventSystems[i];
+                // 구버전 StandaloneInputModule이 남아있다면 비활성화
+                var standalone = eventSystem.GetComponent<StandaloneInputModule>();
+                if (standalone != null)
+                {
+                    standalone.enabled = false;
+                }
+
                 if (eventSystem.GetComponent<InputSystemUIInputModule>() == null)
                 {
                     eventSystem.gameObject.AddComponent<InputSystemUIInputModule>();
@@ -49,14 +55,18 @@ namespace Homepad.Core
 
         public static void GiveMouseToUi()
         {
+            EnsureUiActionMap();
+        }
+
+        private static void EnsureUiActionMap()
+        {
             var asset = InputSystem.actions;
             if (asset == null) return;
 
-            for (int i = 0; i < asset.actionMaps.Count; i++)
+            var uiMap = asset.FindActionMap("UI");
+            if (uiMap != null && !uiMap.enabled)
             {
-                var map = asset.actionMaps[i];
-                if (map.name == "UI") map.Enable();
-                else map.Disable();
+                uiMap.Enable();
             }
         }
     }

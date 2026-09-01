@@ -14,6 +14,11 @@ namespace Homepad.Home
         private readonly Dictionary<string, HomeItemView> views = new Dictionary<string, HomeItemView>();
         private readonly List<Material> materials = new List<Material>();
 
+        [SerializeField] private GameObject livingRoomPrefab;
+        [SerializeField] private GameObject ceilingLampPrefab;
+        [SerializeField] private GameObject wallHeaterPrefab;
+        [SerializeField] private GameObject curtainPrefab;
+
         private Material floorMat;
         private Material wallMat;
         private Material doorMat;
@@ -22,6 +27,7 @@ namespace Homepad.Home
         private Material groundMat;
         private Material ghostMat;
         private readonly Dictionary<RoomHint, Material> roomFloors = new Dictionary<RoomHint, Material>();
+        private RoomLightRig livingRig;
 
         public IReadOnlyDictionary<string, HomeItemView> Views => views;
 
@@ -138,6 +144,21 @@ namespace Homepad.Home
 
         private void BuildRooms()
         {
+            livingRig = null;
+            var living = layout.FindRoom(RoomHint.Living);
+            bool kitLiving = living != null && livingRoomPrefab != null;
+            if (kitLiving)
+            {
+                var roomGo = Object.Instantiate(livingRoomPrefab, geometryRoot);
+                roomGo.name = "LivingRoom";
+                roomGo.transform.position = new Vector3(
+                    living.Origin.x * HomeLayout.CellSize,
+                    0f,
+                    living.Origin.y * HomeLayout.CellSize);
+                livingRig = roomGo.GetComponent<RoomLightRig>();
+                livingRig?.SetLit(false);
+            }
+
             var floors = new Dictionary<RoomHint, MeshAccum>();
             var walls = new MeshAccum();
             var doors = new MeshAccum();
@@ -149,6 +170,7 @@ namespace Homepad.Home
                 var cell = pair.Value;
                 if (!cell.HasFloor) continue;
                 var room = layout.FindRoomById(cell.RoomId);
+                if (kitLiving && room != null && room.Hint == RoomHint.Living) continue;
                 var hint = room != null ? room.Hint : RoomHint.Living;
                 if (!floors.TryGetValue(hint, out var floorAccum))
                 {
@@ -210,7 +232,7 @@ namespace Homepad.Home
             switch (item.Kind)
             {
                 case HomeItemKind.Light:
-                    visual = CreatePrimitive(go.transform, PrimitiveType.Sphere, new Vector3(0.28f, 0.18f, 0.28f));
+                    visual = SpawnKitOrPrimitive(go.transform, ceilingLampPrefab, PrimitiveType.Sphere, new Vector3(0.28f, 0.18f, 0.28f));
                     go.transform.position = layout.CellCenter(item.Cell, HomeLayout.WallHeight - 0.35f);
                     break;
                 case HomeItemKind.Vent:
@@ -222,11 +244,17 @@ namespace Homepad.Home
                     go.transform.position = layout.CellCenter(item.Cell, 0.8f);
                     break;
                 case HomeItemKind.ElectricCurtain:
-                    go.transform.position = layout.WallCenter(item.Cell, item.WallDir, 1.2f);
+                    go.transform.position = layout.WallCenter(item.Cell, item.WallDir, 1.15f);
                     go.transform.rotation = Quaternion.LookRotation(
                         new Vector3(HomeLayout.DirVec[item.WallDir].x, 0f, HomeLayout.DirVec[item.WallDir].y));
-                    visual = CreatePrimitive(go.transform, PrimitiveType.Cube, new Vector3(HomeLayout.CellSize * 0.9f, 1.5f, 0.06f));
+                    visual = SpawnKitOrPrimitive(go.transform, curtainPrefab, PrimitiveType.Cube, new Vector3(HomeLayout.CellSize * 0.9f, 1.5f, 0.06f));
                     curtainLeaf = visual;
+                    break;
+                case HomeItemKind.Heating:
+                    go.transform.position = layout.WallCenter(item.Cell, item.WallDir, 1.05f);
+                    go.transform.rotation = Quaternion.LookRotation(
+                        new Vector3(HomeLayout.DirVec[item.WallDir].x, 0f, HomeLayout.DirVec[item.WallDir].y));
+                    visual = SpawnKitOrPrimitive(go.transform, wallHeaterPrefab, PrimitiveType.Cube, new Vector3(0.32f, 0.48f, 0.1f));
                     break;
                 default:
                     go.transform.position = layout.WallCenter(item.Cell, item.WallDir, 1.15f);
@@ -251,7 +279,9 @@ namespace Homepad.Home
 
         private void ApplyItemState(HomeItemView view, WallpadManager manager)
         {
-            if (view == null || view.Item == null || view.Visual == null) return;
+            if (view == null || view.Item == null) return;
+            if (ApplyKitState(view, manager)) return;
+            if (view.Visual == null) return;
             var renderer = view.Visual.GetComponent<MeshRenderer>();
             if (renderer == null) return;
             Color color = new Color(0.55f, 0.58f, 0.62f);
@@ -303,6 +333,68 @@ namespace Homepad.Home
 
             renderer.material.color = color;
             SetMatColor(renderer.material, color);
+        }
+
+        private bool ApplyKitState(HomeItemView view, WallpadManager manager)
+        {
+            var item = view.Item;
+            if (item.Kind == HomeItemKind.Light)
+            {
+                var bulb = view.GetComponentInChildren<Light>(true);
+                if (bulb == null && livingRig == null) return false;
+                var state = FindLight(manager, item.DeviceId);
+                bool on = state != null && state.isOn;
+                if (bulb != null)
+                {
+                    bulb.enabled = true;
+                    bulb.intensity = on ? 7.5f : 0.15f;
+                    bulb.color = on ? new Color(1f, 0.93f, 0.78f) : new Color(0.35f, 0.42f, 0.55f);
+                }
+
+                livingRig?.SetLit(on);
+                var shade = view.transform.Find("CeilingLamp/Shade") ?? view.transform.Find("Shade");
+                var shadeRenderer = shade != null ? shade.GetComponent<MeshRenderer>() : null;
+                if (shadeRenderer != null)
+                {
+                    var mat = shadeRenderer.material;
+                    if (mat.HasProperty("_EmissionColor"))
+                    {
+                        mat.EnableKeyword("_EMISSION");
+                        mat.SetColor("_EmissionColor", on ? new Color(2.2f, 1.9f, 1.2f) : new Color(0.05f, 0.05f, 0.06f));
+                    }
+                }
+
+                return bulb != null || livingRig != null;
+            }
+
+            if (item.Kind == HomeItemKind.Heating)
+            {
+                var glow = view.GetComponentInChildren<HeaterGlow>(true);
+                if (glow == null) return false;
+                var room = FindHeat(manager, item.DeviceId);
+                glow.SetOn(room != null && room.isPowered && !room.isAwayMode);
+                return true;
+            }
+
+            if (item.Kind == HomeItemKind.ElectricCurtain)
+            {
+                var cloth = view.GetComponentInChildren<CurtainCloth>(true);
+                if (cloth == null) return false;
+                cloth.SetOpen(item.CurtainOpen);
+                return true;
+            }
+
+            return false;
+        }
+
+        private Transform SpawnKitOrPrimitive(Transform parent, GameObject prefab, PrimitiveType fallback, Vector3 scale)
+        {
+            if (prefab == null) return CreatePrimitive(parent, fallback, scale);
+            var inst = Object.Instantiate(prefab, parent, false);
+            inst.transform.localPosition = Vector3.zero;
+            inst.transform.localRotation = Quaternion.identity;
+            inst.transform.localScale = Vector3.one;
+            return inst.transform;
         }
 
         private static LightState FindLight(WallpadManager manager, int id)

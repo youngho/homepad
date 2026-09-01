@@ -1,8 +1,5 @@
-using System.Collections.Generic;
 using Homepad.Home;
 using UnityEngine;
-using UnityEngine.EventSystems;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Homepad.UI
@@ -11,9 +8,6 @@ namespace Homepad.UI
     {
         [SerializeField] private Button[] buttons;
         [SerializeField] private CatalogDrawerUI drawer;
-
-        private int lastPickFrame = -1;
-        private static readonly List<RaycastResult> Hits = new List<RaycastResult>();
 
         private void OnEnable()
         {
@@ -33,34 +27,6 @@ namespace Homepad.UI
         {
             var home = HomeController.Instance;
             if (home != null) home.LayoutChanged -= Refresh;
-        }
-
-        private void Update()
-        {
-            if (drawer != null && !drawer.IsOpen) return;
-            var mouse = Mouse.current;
-            if (mouse == null || !mouse.leftButton.wasPressedThisFrame) return;
-            if (EventSystem.current == null || buttons == null) return;
-
-            var data = new PointerEventData(EventSystem.current)
-            {
-                position = mouse.position.ReadValue()
-            };
-            Hits.Clear();
-            EventSystem.current.RaycastAll(data, Hits);
-            for (int i = 0; i < Hits.Count; i++)
-            {
-                var hit = Hits[i].gameObject;
-                for (int b = 0; b < buttons.Length && b < HomeItemDef.Catalog.Length; b++)
-                {
-                    if (buttons[b] == null) continue;
-                    if (hit == buttons[b].gameObject || hit.transform.IsChildOf(buttons[b].transform))
-                    {
-                        Pick(b);
-                        return;
-                    }
-                }
-            }
         }
 
         private void Subscribe(bool on)
@@ -87,11 +53,9 @@ namespace Homepad.UI
 
         public void Pick(int index)
         {
-            if (lastPickFrame == Time.frameCount) return;
             if (index < 0 || index >= HomeItemDef.Catalog.Length) return;
             var home = HomeController.EnsureExists();
             if (home == null) return;
-            lastPickFrame = Time.frameCount;
             home.PlaceFromCatalog(HomeItemDef.Catalog[index]);
         }
 

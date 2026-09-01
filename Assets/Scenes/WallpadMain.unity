@@ -416,6 +416,7 @@ GameObject:
   - component: {fileID: 350001}
   - component: {fileID: 350002}
   - component: {fileID: 350003}
+  - component: {fileID: 350004}
   m_Layer: 0
   m_Name: EventSystem
   m_TagString: Untagged
@@ -474,9 +475,9 @@ MonoBehaviour:
   m_MoveAction: {fileID: -8784545083839296357, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_SubmitAction: {fileID: 392368643174621059, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_CancelAction: {fileID: 7727032971491509709, guid: 052faaac586de48259a63d0c4782560b, type: 3}
-  m_LeftClickAction: {fileID: 3001919216984127666, guid: 052faaac586de48259a63d0c4782560b, type: 3}
-  m_MiddleClickAction: {fileID: -2185481485728861312, guid: 052faaac586de48259a63d0c4782560b, type: 3}
-  m_RightClickAction: {fileID: -409022569774409949, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+  m_LeftClickAction: {fileID: 3001919216989983466, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+  m_MiddleClickAction: {fileID: -2185481485913320682, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+  m_RightClickAction: {fileID: -4090225696740746782, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_ScrollWheelAction: {fileID: 6240969308177333660, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_TrackedDevicePositionAction: {fileID: 6564999863303420839, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_TrackedDeviceOrientationAction: {fileID: 7970375526676320489, guid: 052faaac586de48259a63d0c4782560b, type: 3}
@@ -484,6 +485,18 @@ MonoBehaviour:
   m_PointerBehavior: 0
   m_CursorLockBehavior: 0
   m_ScrollDeltaPerTick: 6
+--- !u!114 &350004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 350000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1511ccae7919cfc46b603b9b337fdc94, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.EventSystems.BaseInput
 --- !u!1 &400000
 GameObject:
   m_ObjectHideFlags: 0
@@ -5869,6 +5882,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1b2c3d4e5f64789a0b1c2d3e4f50606, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Homepad.Home.IsometricHomeBuilder
+  livingRoomPrefab: {fileID: 75916880049464119, guid: 37a945d5e25e04d8b96ceda8bb038dbe, type: 3}
+  ceilingLampPrefab: {fileID: 5348421040690460612, guid: a336693dd94fd466a99c53d35e93468a, type: 3}
+  wallHeaterPrefab: {fileID: 85345935868173813, guid: d86c7d0f0f58d4c3eb8f3bdd6930ed13, type: 3}
+  curtainPrefab: {fileID: 3668455219893058171, guid: fec3169a8434f42f0b51c05ba0cd26f0, type: 3}
 --- !u!114 &1105870747
 MonoBehaviour:
   m_ObjectHideFlags: 0

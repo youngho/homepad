@@ -27,4 +27,4 @@ awayButton.onClick.AddListener(ToggleAway);
 
 목록처럼 개수가 늘어나는 칸(카탈로그 슬롯 등)도 씬에 미리 두거나 **씬/프리팹 원본을 Instantiate**한다. 위젯 자체를 코드로 그리지 않는다.
 
-예외: 이소메트릭 집 메쉬처럼 **월드 지오메트리**는 코드 생성이 가능하다. UI 캔버스는 해당하지 않는다.
+집 월드는 키트 프리팹을 Instantiate한다. `CreatePrimitive`로 가구·조명을 그리지 않는다. UI 캔버스는 코드로 조립하지 않는다.
