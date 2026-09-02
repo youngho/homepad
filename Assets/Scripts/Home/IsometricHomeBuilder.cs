@@ -183,9 +183,6 @@ namespace Homepad.Home
 
             CreateMeshObject("TranslucentWalls", geometryRoot, output.TranslucentWalls.ToMesh("TranslucentWalls"), translucentWallMat, false, false);
             CreateMeshObject("EdgeLines", geometryRoot, output.EdgeLines.ToMesh("EdgeLines"), edgeLineMat, false, false);
-            CreateMeshObject("DoorFrames", geometryRoot, output.DoorFrames.ToMesh("DoorFrames"), doorFrameMat, false, true);
-            CreateMeshObject("WindowFrames", geometryRoot, output.WindowFrames.ToMesh("WindowFrames"), windowFrameMat, false, true);
-            CreateMeshObject("WindowGlass", geometryRoot, output.WindowGlass.ToMesh("WindowGlass"), glassMat, false, false);
             CreateMeshObject("Plinth", geometryRoot, output.PlinthData.ToMesh("Plinth"), plinthMat, false, true);
 
             var rigGo = new GameObject("DioramaRoomRig");
