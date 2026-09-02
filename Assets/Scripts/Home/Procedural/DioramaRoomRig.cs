@@ -15,7 +15,6 @@ namespace Homepad.Home
             public HeaterGlow heaterGlow;
             public MeshRenderer lampRenderer;
             public RoomLightRig lightRig;
-            public CurtainCloth curtainCloth;
             public ProceduralCurtain3D curtain3D;
             public Transform ceilingAnchor;
             public Transform wallAnchor;
@@ -91,7 +90,6 @@ namespace Homepad.Home
         {
             if (!fixtureMap.TryGetValue(hint, out var f)) return;
             if (f.curtain3D != null) f.curtain3D.SetOpen(open);
-            if (f.curtainCloth != null) f.curtainCloth.SetOpen(open);
         }
 
         public Transform GetAnchor(HomeItemKind kind, RoomHint hint)
@@ -124,7 +122,6 @@ namespace Homepad.Home
             if (src.lampRenderer != null) dest.lampRenderer = src.lampRenderer;
             if (src.lightRig != null) dest.lightRig = src.lightRig;
             if (src.heaterGlow != null) dest.heaterGlow = src.heaterGlow;
-            if (src.curtainCloth != null) dest.curtainCloth = src.curtainCloth;
             if (src.curtain3D != null) dest.curtain3D = src.curtain3D;
             if (src.ceilingAnchor != null) dest.ceilingAnchor = src.ceilingAnchor;
             if (src.wallAnchor != null) dest.wallAnchor = src.wallAnchor;

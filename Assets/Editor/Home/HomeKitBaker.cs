@@ -38,9 +38,8 @@ namespace Homepad.Editor
             var room = BuildLivingRoom(oak, plaster, trim, fabric, cushion, rug, glass, sky, table);
             var lamp = BuildLamp(metal, shade);
             var heater = BuildHeater(heat, plate);
-            var curtain = BuildCurtain(cloth);
 
-            AssignToScene(room, lamp, heater, curtain);
+            AssignToScene(room, lamp, heater);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
         }
@@ -120,66 +119,7 @@ namespace Homepad.Editor
             return SavePrefab(root, Root + "/Prefabs/WallHeater.prefab");
         }
 
-        static GameObject BuildCurtain(Material cloth)
-        {
-            var root = new GameObject("Curtain");
-            var panel = new GameObject("Cloth");
-            panel.transform.SetParent(root.transform, false);
-            var filter = panel.AddComponent<MeshFilter>();
-            filter.sharedMesh = CurtainMesh();
-            var renderer = panel.AddComponent<MeshRenderer>();
-            renderer.sharedMaterial = cloth;
-            renderer.shadowCastingMode = ShadowCastingMode.On;
-            panel.AddComponent<CurtainCloth>();
-            panel.transform.localScale = new Vector3(1.55f, 1.85f, 1f);
-            return SavePrefab(root, Root + "/Prefabs/Curtain.prefab");
-        }
 
-        static Mesh CurtainMesh()
-        {
-            const int nx = 14;
-            const int ny = 18;
-            var verts = new Vector3[(nx + 1) * (ny + 1)];
-            var norms = new Vector3[verts.Length];
-            var uvs = new Vector2[verts.Length];
-            var tris = new int[nx * ny * 6];
-            int vi = 0;
-            for (int y = 0; y <= ny; y++)
-            {
-                float v = y / (float)ny;
-                for (int x = 0; x <= nx; x++)
-                {
-                    float u = x / (float)nx;
-                    verts[vi] = new Vector3(u - 0.5f, v, 0f);
-                    norms[vi] = Vector3.back;
-                    uvs[vi] = new Vector2(u, v);
-                    vi++;
-                }
-            }
-
-            int ti = 0;
-            for (int y = 0; y < ny; y++)
-            {
-                for (int x = 0; x < nx; x++)
-                {
-                    int i = y * (nx + 1) + x;
-                    tris[ti++] = i;
-                    tris[ti++] = i + nx + 1;
-                    tris[ti++] = i + 1;
-                    tris[ti++] = i + 1;
-                    tris[ti++] = i + nx + 1;
-                    tris[ti++] = i + nx + 2;
-                }
-            }
-
-            var mesh = new Mesh { name = "CurtainCloth" };
-            mesh.vertices = verts;
-            mesh.triangles = tris;
-            mesh.normals = norms;
-            mesh.uv = uvs;
-            AssetDatabase.CreateAsset(mesh, Root + "/Meshes/CurtainCloth.asset");
-            return mesh;
-        }
 
         static GameObject Box(string name, Transform parent, Vector3 localPos, Vector3 scale, Material mat)
         {
@@ -234,7 +174,7 @@ namespace Homepad.Editor
             return prefab;
         }
 
-        static void AssignToScene(GameObject room, GameObject lamp, GameObject heater, GameObject curtain)
+        static void AssignToScene(GameObject room, GameObject lamp, GameObject heater)
         {
             var builder = Object.FindFirstObjectByType<IsometricHomeBuilder>();
             if (builder == null) return;
@@ -242,7 +182,6 @@ namespace Homepad.Editor
             so.FindProperty("livingRoomPrefab").objectReferenceValue = room;
             so.FindProperty("ceilingLampPrefab").objectReferenceValue = lamp;
             so.FindProperty("wallHeaterPrefab").objectReferenceValue = heater;
-            so.FindProperty("curtainPrefab").objectReferenceValue = curtain;
             so.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(builder);
         }

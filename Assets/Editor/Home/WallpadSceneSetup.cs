@@ -78,7 +78,6 @@ namespace Homepad.Editor
                 var so = new SerializedObject(builder);
                 AssignPrefab(so, "ceilingLampPrefab", "Assets/Home/Kit/Prefabs/CeilingLamp.prefab");
                 AssignPrefab(so, "wallHeaterPrefab", "Assets/Home/Kit/Prefabs/WallHeater.prefab");
-                AssignPrefab(so, "curtainPrefab", "Assets/Home/Kit/Prefabs/Curtain.prefab");
                 so.ApplyModifiedProperties();
             }
 

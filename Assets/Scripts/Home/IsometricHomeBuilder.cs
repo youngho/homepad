@@ -16,7 +16,6 @@ namespace Homepad.Home
 
         [SerializeField] private GameObject ceilingLampPrefab;
         [SerializeField] private GameObject wallHeaterPrefab;
-        [SerializeField] private GameObject curtainPrefab;
 
         private Material floorMat;
         private Material translucentWallMat;
@@ -369,8 +368,6 @@ namespace Homepad.Home
                 ceilingLampPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/CeilingLamp.prefab");
             if (wallHeaterPrefab == null)
                 wallHeaterPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/WallHeater.prefab");
-            if (curtainPrefab == null)
-                curtainPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/Curtain.prefab");
 #endif
         }
 
