@@ -10,6 +10,10 @@ namespace Homepad.UI
         [SerializeField] private CatalogDrawerUI drawer;
         [SerializeField] private Text captionText;
 
+        [Header("Typography")]
+        [SerializeField] private Font fontRegular;
+        [SerializeField] private Font fontSemiBold;
+
         private RectTransform contentRoot;
         private RoomRecord focusedRoom = null;
         private bool isAddRoomMode = false;
@@ -22,23 +26,41 @@ namespace Homepad.UI
         private static readonly Color BgCardHover = new Color(0.20f, 0.25f, 0.35f, 1.0f);
         private static readonly Color AccentColor = new Color(0.25f, 0.65f, 1.0f, 1.0f);
         private static readonly Color AccentGreen = new Color(0.25f, 0.85f, 0.55f, 1.0f);
-        private static readonly Color AccentAmber = new Color(1.0f, 0.65f, 0.20f, 1.0f);
         private static readonly Color TextPrimary = new Color(0.95f, 0.96f, 0.98f, 1.0f);
         private static readonly Color TextSecondary = new Color(0.65f, 0.72f, 0.82f, 1.0f);
         private static readonly Color DisabledColor = new Color(0.10f, 0.11f, 0.14f, 0.6f);
 
         private void Awake()
         {
+            EnsureFonts();
             FindContentRoot();
             if (captionText == null)
             {
                 var captionTrans = transform.Find("Caption");
                 if (captionTrans != null) captionText = captionTrans.GetComponent<Text>();
             }
+
+            if (captionText != null)
+            {
+                captionText.font = fontSemiBold;
+                captionText.fontStyle = FontStyle.Normal;
+                captionText.fontSize = Mathf.Max(22, captionText.fontSize);
+            }
+        }
+
+        private void EnsureFonts()
+        {
+#if UNITY_EDITOR
+            if (fontRegular == null)
+                fontRegular = UnityEditor.AssetDatabase.LoadAssetAtPath<Font>("Assets/Fonts/Pretendard-Regular.otf");
+            if (fontSemiBold == null)
+                fontSemiBold = UnityEditor.AssetDatabase.LoadAssetAtPath<Font>("Assets/Fonts/Pretendard-SemiBold.otf");
+#endif
         }
 
         private void OnEnable()
         {
+            EnsureFonts();
             Subscribe(true);
             isAddRoomMode = false;
             isRenameMode = false;
@@ -48,6 +70,7 @@ namespace Homepad.UI
 
         private void Start()
         {
+            EnsureFonts();
             Subscribe(true);
             EnsureFocusedRoom();
             BuildUI();
@@ -170,6 +193,7 @@ namespace Homepad.UI
 
         private void BuildUI()
         {
+            EnsureFonts();
             FindContentRoot();
             if (contentRoot == null) return;
 
@@ -199,7 +223,6 @@ namespace Homepad.UI
 
             if (captionText != null) captionText.text = "우리집 공간 & 장치 관리";
 
-            // A. Room Selector Chips
             if (layout != null && layout.Rooms.Count > 0)
             {
                 BuildRoomChipsBar(layout);
@@ -207,8 +230,7 @@ namespace Homepad.UI
 
             if (focusedRoom == null)
             {
-                // No room yet
-                var emptyCard = CreateInfoCard("아직 생성된 공간이 없습니다.", "아래 버튼을 눌러 첫 번째 공간(거실, 방)을 만들어보세요.");
+                var emptyCard = CreateInfoCard("아직 생성된 공간이 없습니다.", "아래 버튼을 눌러 첫 번째 공간을 만들어보세요.");
                 activeCards.Add(emptyCard);
 
                 var addBtn = CreateCardButton("➕  새로운 공간 만들기", "거실, 안방, 서재 등 추가", true, () =>
@@ -220,7 +242,6 @@ namespace Homepad.UI
                 return;
             }
 
-            // B. Focused Room Header Card
             string roomEmoji = HomeItemDef.RoomEmoji(focusedRoom.Hint);
             string roomTitle = $"{roomEmoji}  {focusedRoom.Name}";
             var roomHeader = CreateHeaderCard(roomTitle, "공간 이름 변경 및 설정", () =>
@@ -231,7 +252,6 @@ namespace Homepad.UI
             });
             activeCards.Add(roomHeader);
 
-            // C. Section Header: Installed Devices in this room
             var installedItems = GetItemsInRoom(focusedRoom.Hint);
             if (installedItems.Count > 0)
             {
@@ -242,13 +262,12 @@ namespace Homepad.UI
                 {
                     var item = installedItems[i];
                     string itemEmoji = HomeItemDef.CategoryRules.TryGetValue(item.Kind, out var r) ? r.Emoji : "📦";
-                    string status = item.Kind == HomeItemKind.Light ? "💡 조명 (클릭하여 제어)" : $"{item.Surface} 설치됨";
+                    string status = item.Kind == HomeItemKind.Light ? "💡 조명 (클릭하여 제어)" : $"{GetSurfaceDesc(item.Surface)} 설치됨";
                     var devCard = CreateInstalledDeviceCard($"{itemEmoji}  {item.DisplayName}", status);
                     activeCards.Add(devCard);
                 }
             }
 
-            // D. Section Header: Add Device to this room
             var addSecLabel = CreateSectionTitle("➕  이 공간에 장치 추가하기");
             activeCards.Add(addSecLabel);
 
@@ -281,7 +300,6 @@ namespace Homepad.UI
                 activeCards.Add(addDevBtn);
             }
 
-            // E. Add Another Room Button
             var addOtherRoomBtn = CreateCardButton("➕  새로운 공간 추가하기", "서재, 아이방, 드레스룸 등 다른 방 만들기", true, () =>
             {
                 isAddRoomMode = true;
@@ -295,7 +313,7 @@ namespace Homepad.UI
             var chipsContainer = new GameObject("RoomChipsBar");
             chipsContainer.transform.SetParent(contentRoot, false);
             var rect = chipsContainer.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(0f, 44f);
+            rect.sizeDelta = new Vector2(0f, 48f);
 
             var hGroup = chipsContainer.AddComponent<HorizontalLayoutGroup>();
             hGroup.childAlignment = TextAnchor.MiddleLeft;
@@ -316,7 +334,7 @@ namespace Homepad.UI
                 chipBtnGo.transform.SetParent(chipsContainer.transform, false);
 
                 var chipRect = chipBtnGo.AddComponent<RectTransform>();
-                chipRect.sizeDelta = new Vector2(92f, 38f);
+                chipRect.sizeDelta = new Vector2(104f, 42f);
 
                 var chipImg = chipBtnGo.AddComponent<Image>();
                 chipImg.color = isSelected ? AccentColor : new Color(0.18f, 0.20f, 0.26f, 0.95f);
@@ -337,10 +355,10 @@ namespace Homepad.UI
                 txtRect.anchorMax = Vector2.one;
 
                 var txt = txtGo.AddComponent<Text>();
-                txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+                txt.font = isSelected ? fontSemiBold : fontRegular;
+                txt.fontStyle = FontStyle.Normal;
                 txt.text = chipText;
-                txt.fontSize = 12;
-                txt.fontStyle = isSelected ? FontStyle.Bold : FontStyle.Normal;
+                txt.fontSize = 16;
                 txt.color = isSelected ? Color.white : TextSecondary;
                 txt.alignment = TextAnchor.MiddleCenter;
             }
@@ -349,13 +367,12 @@ namespace Homepad.UI
         }
 
         // ==========================================
-        // 2. Add New Room View (Preset Chips + Custom Input)
+        // 2. Add New Room View (Preset Chips)
         // ==========================================
         private void BuildAddRoomModeUI()
         {
             if (captionText != null) captionText.text = "새로운 공간(방) 추가";
 
-            // Back Button
             var backBtn = CreateCardButton("← 돌아가기", "공간 및 기기 관리 목록으로", true, () =>
             {
                 isAddRoomMode = false;
@@ -363,7 +380,6 @@ namespace Homepad.UI
             }, AccentColor);
             activeCards.Add(backBtn);
 
-            // Section: Recommended Presets
             var presetSec = CreateSectionTitle("추천 공간 프리셋 (원터치 1초 생성)");
             activeCards.Add(presetSec);
 
@@ -478,13 +494,13 @@ namespace Homepad.UI
             var go = new GameObject($"Sec_{text}");
             go.transform.SetParent(contentRoot, false);
             var rect = go.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(0f, 28f);
+            rect.sizeDelta = new Vector2(0f, 32f);
 
             var txt = go.AddComponent<Text>();
-            txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+            txt.font = fontSemiBold;
+            txt.fontStyle = FontStyle.Normal;
             txt.text = text;
-            txt.fontSize = 13;
-            txt.fontStyle = FontStyle.Bold;
+            txt.fontSize = 18;
             txt.color = TextSecondary;
             txt.alignment = TextAnchor.MiddleLeft;
             return go;
@@ -496,7 +512,7 @@ namespace Homepad.UI
             go.transform.SetParent(contentRoot, false);
 
             var rect = go.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(0f, 52f);
+            rect.sizeDelta = new Vector2(0f, 56f);
 
             var img = go.AddComponent<Image>();
             img.color = new Color(0.11f, 0.13f, 0.18f, 0.9f);
@@ -517,17 +533,18 @@ namespace Homepad.UI
 
             var t1 = new GameObject("T1").AddComponent<Text>();
             t1.transform.SetParent(textGo.transform, false);
-            t1.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+            t1.font = fontSemiBold;
+            t1.fontStyle = FontStyle.Normal;
             t1.text = title;
-            t1.fontSize = 15;
-            t1.fontStyle = FontStyle.Bold;
+            t1.fontSize = 18;
             t1.color = TextPrimary;
 
             var t2 = new GameObject("T2").AddComponent<Text>();
             t2.transform.SetParent(textGo.transform, false);
-            t2.font = t1.font;
+            t2.font = fontRegular;
+            t2.fontStyle = FontStyle.Normal;
             t2.text = status;
-            t2.fontSize = 11;
+            t2.fontSize = 16;
             t2.color = AccentGreen;
 
             return go;
@@ -538,12 +555,13 @@ namespace Homepad.UI
             var go = new GameObject("InfoCard");
             go.transform.SetParent(contentRoot, false);
             var rect = go.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(0f, 60f);
+            rect.sizeDelta = new Vector2(0f, 68f);
 
             var txt = go.AddComponent<Text>();
-            txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+            txt.font = fontRegular;
+            txt.fontStyle = FontStyle.Normal;
             txt.text = $"{title}\n{sub}";
-            txt.fontSize = 13;
+            txt.fontSize = 16;
             txt.color = TextSecondary;
             txt.alignment = TextAnchor.MiddleCenter;
             return go;
@@ -555,7 +573,7 @@ namespace Homepad.UI
             btnGo.transform.SetParent(contentRoot, false);
 
             var rect = btnGo.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(0f, 64f);
+            rect.sizeDelta = new Vector2(0f, 72f);
 
             Color bg = bgColor ?? (interactable ? BgCardColor : DisabledColor);
             var img = btnGo.AddComponent<Image>();
@@ -594,19 +612,20 @@ namespace Homepad.UI
             var mainLabelGo = new GameObject("MainLabel");
             mainLabelGo.transform.SetParent(textGo.transform, false);
             var mainTxt = mainLabelGo.AddComponent<Text>();
-            mainTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+            mainTxt.font = fontSemiBold;
+            mainTxt.fontStyle = FontStyle.Normal;
             mainTxt.text = mainText;
-            mainTxt.fontSize = 16;
-            mainTxt.fontStyle = FontStyle.Bold;
+            mainTxt.fontSize = 18;
             mainTxt.color = interactable ? TextPrimary : new Color(0.5f, 0.55f, 0.62f, 0.5f);
             mainTxt.alignment = TextAnchor.MiddleLeft;
 
             var subLabelGo = new GameObject("SubLabel");
             subLabelGo.transform.SetParent(textGo.transform, false);
             var subTxt = subLabelGo.AddComponent<Text>();
-            subTxt.font = mainTxt.font;
+            subTxt.font = fontRegular;
+            subTxt.fontStyle = FontStyle.Normal;
             subTxt.text = subText;
-            subTxt.fontSize = 11;
+            subTxt.fontSize = 16;
             subTxt.color = interactable ? (mainText.StartsWith("←") ? AccentColor : TextSecondary) : new Color(0.45f, 0.50f, 0.58f, 0.4f);
             subTxt.alignment = TextAnchor.MiddleLeft;
 

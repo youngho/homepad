@@ -101,8 +101,18 @@ namespace Homepad.UI
                 ? customFont
                 : (statusText != null && statusText.font != null)
                     ? statusText.font
-                    : (Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf"));
-            uiFontBold = customFontBold != null ? customFontBold : uiFont;
+#if UNITY_EDITOR
+                    : UnityEditor.AssetDatabase.LoadAssetAtPath<Font>("Assets/Fonts/Pretendard-Regular.otf");
+#else
+                    : null;
+#endif
+            uiFontBold = customFontBold != null
+                ? customFontBold
+#if UNITY_EDITOR
+                : UnityEditor.AssetDatabase.LoadAssetAtPath<Font>("Assets/Fonts/Pretendard-SemiBold.otf");
+#else
+                : uiFont;
+#endif
 
             if (customHexInput != null && string.IsNullOrEmpty(customHexInput.text))
             {
