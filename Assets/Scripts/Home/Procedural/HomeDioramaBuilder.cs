@@ -7,14 +7,17 @@ namespace Homepad.Home
 {
     public class HomeDioramaBuilder : MonoBehaviour
     {
-        public const float WallThickness = 0.12f;
+        public const float WallThickness = 0.08f;
         public const float HighWallHeight = 1.95f;
-        public const float LowWallHeight = 0.45f;
-        public const float InteriorWallHeight = 1.05f;
-        public const float WindowSillHeight = 0.65f;
-        public const float WindowLintelHeight = 1.60f;
-        public const float DoorLintelHeight = 1.55f;
+        public const float LowWallHeight = 0.50f;
+        public const float WindowSillHeight = 0.70f;
+        public const float WindowLintelHeight = 1.65f;
+        public const float DoorLintelHeight = 1.60f;
         public const float FloorPlinthHeight = 0.04f;
+
+        // Line accent dimensions
+        public const float LineThickness = 0.032f;
+        public const float PostThickness = 0.045f;
 
         public sealed class MeshData
         {
@@ -29,7 +32,6 @@ namespace Homepad.Home
                 Vertices.Add(p0); Vertices.Add(p1); Vertices.Add(p2); Vertices.Add(p3);
                 Normals.Add(n); Normals.Add(n); Normals.Add(n); Normals.Add(n);
 
-                // Compute plan/facade UVs
                 float u = Vector3.Distance(p0, p1);
                 float v = Vector3.Distance(p0, p3);
                 UVs.Add(new Vector2(0f, 0f));
@@ -85,29 +87,23 @@ namespace Homepad.Home
         public sealed class BuildOutput
         {
             public readonly Dictionary<RoomHint, MeshData> RoomFloors = new Dictionary<RoomHint, MeshData>();
-            public readonly MeshData WallData = new MeshData();
-            public readonly MeshData WallCapData = new MeshData();
-            public readonly MeshData FrameData = new MeshData();
-            public readonly MeshData GlassData = new MeshData();
-            public readonly MeshData SkirtingData = new MeshData();
+            public readonly MeshData TranslucentWalls = new MeshData();
+            public readonly MeshData EdgeLines = new MeshData();
+            public readonly MeshData DoorFrames = new MeshData();
+            public readonly MeshData WindowFrames = new MeshData();
+            public readonly MeshData WindowGlass = new MeshData();
+            public readonly MeshData PlinthData = new MeshData();
         }
 
         public static BuildOutput Generate(HomeLayout layout)
         {
-            Vector3 forward = Camera.main != null ? Camera.main.transform.forward : new Vector3(1f, -1f, 1f);
-            return Generate(layout, forward);
-        }
-
-        public static BuildOutput Generate(HomeLayout layout, Vector3 cameraForward)
-        {
             var output = new BuildOutput();
             if (layout == null) return output;
 
-            var cutaway = HomeLayout.CutawayView.FromCamera(cameraForward);
             float halfCell = HomeLayout.CellSize * 0.5f;
             float t = WallThickness;
 
-            // 1. Build Room Floors & Plinths
+            // 1. Build Room Floors & Floating Plinth
             foreach (var pair in layout.Cells)
             {
                 var cell = pair.Value;
@@ -122,7 +118,8 @@ namespace Homepad.Home
                 }
 
                 Vector3 center = layout.CellCenter(cell.Pos, 0f);
-                // Plinth top quad (facing UP)
+
+                // Floor Top Quad
                 floorMesh.AddQuad(
                     new Vector3(center.x - halfCell, FloorPlinthHeight, center.z + halfCell),
                     new Vector3(center.x + halfCell, FloorPlinthHeight, center.z + halfCell),
@@ -130,20 +127,21 @@ namespace Homepad.Home
                     new Vector3(center.x - halfCell, FloorPlinthHeight, center.z - halfCell),
                     Vector3.up);
 
-                // Plinth outer edges (if boundary)
+                // Boundary Skirt Base
                 for (int d = 0; d < 4; d++)
                 {
                     Vector2Int neighborPos = cell.Pos + HomeLayout.DirVec[d];
                     var neighbor = layout.GetCell(neighborPos);
                     if (neighbor == null || !neighbor.HasFloor)
                     {
-                        AddPlinthSkirt(output.SkirtingData, center, halfCell, d, FloorPlinthHeight);
+                        AddPlinthSkirt(output.PlinthData, output.EdgeLines, center, halfCell, d, FloorPlinthHeight);
                     }
                 }
             }
 
-            // 2. Build Volumetric Walls
+            // 2. Build Translucent Walls & Glowing Edge Lines
             var processedEdges = new HashSet<string>();
+            var processedCorners = new HashSet<string>();
 
             foreach (var pair in layout.Cells)
             {
@@ -163,19 +161,24 @@ namespace Homepad.Home
                     processedEdges.Add(edgeKey);
 
                     Vector3 center = layout.CellCenter(cell.Pos, 0f);
-                    float wallH = GetWallHeight(layout, cell, d, cutaway);
+                    float wallH = GetWallHeight(layout, cell, d);
+
+                    // Add Corner Posts on vertices if not processed
+                    GetWallLine(center, halfCell, d, out Vector3 p0, out Vector3 p1, out Vector3 norm, out Vector3 side);
+                    AddCornerPostIfNew(output.EdgeLines, processedCorners, p0, wallH);
+                    AddCornerPostIfNew(output.EdgeLines, processedCorners, p1, wallH);
 
                     if (hasDoor)
                     {
-                        BuildVolumetricDoorway(output.WallData, output.WallCapData, output.FrameData, center, halfCell, d, t, wallH);
+                        BuildTranslucentDoorway(output.TranslucentWalls, output.EdgeLines, output.DoorFrames, center, halfCell, d, t, wallH);
                     }
                     else if (hasWindow)
                     {
-                        BuildVolumetricWindow(output.WallData, output.WallCapData, output.FrameData, output.GlassData, center, halfCell, d, t, wallH);
+                        BuildTranslucentWindow(output.TranslucentWalls, output.EdgeLines, output.WindowFrames, output.WindowGlass, center, halfCell, d, t, wallH);
                     }
                     else
                     {
-                        BuildVolumetricWall(output.WallData, output.WallCapData, center, halfCell, d, t, wallH);
+                        BuildTranslucentWall(output.TranslucentWalls, output.EdgeLines, center, halfCell, d, t, wallH);
                     }
                 }
             }
@@ -183,122 +186,170 @@ namespace Homepad.Home
             return output;
         }
 
-        private static float GetWallHeight(HomeLayout layout, HomeCell cell, int dir, HomeLayout.CutawayView cutaway)
+        private static float GetWallHeight(HomeLayout layout, HomeCell cell, int dir)
         {
             if (!layout.Cutaway) return HighWallHeight;
 
+            // In isometric cutaway: South (dir 2) and West (dir 3) are open / low walls
+            // North (dir 0) and East (dir 1) are backdrop high walls
+            if (dir == 2 || dir == 3)
+            {
+                return LowWallHeight;
+            }
+
             Vector2Int neighborPos = cell.Pos + HomeLayout.DirVec[dir];
             var neighbor = layout.GetCell(neighborPos);
-            bool interior = neighbor != null && neighbor.HasFloor;
-            if (interior) return InteriorWallHeight;
+            if (neighbor != null && neighbor.HasFloor)
+            {
+                return (dir == 0 || dir == 1) ? HighWallHeight : LowWallHeight;
+            }
 
-            return cutaway.IsFront(dir) ? LowWallHeight : HighWallHeight;
+            return HighWallHeight;
         }
 
-        private static void BuildVolumetricWall(MeshData walls, MeshData caps, Vector3 center, float hCell, int dir, float t, float h)
-        {
-            GetWallLine(center, hCell, dir, out Vector3 p0, out Vector3 p1, out _, out _);
-            float length = Vector3.Distance(p0, p1);
-            Vector3 mid = (p0 + p1) * 0.5f;
-            AddOrientedBox(walls, mid, dir, length + t, h, t, FloorPlinthHeight);
-            AddOrientedBox(caps, mid, dir, length + t + 0.02f, 0.03f, t + 0.02f, FloorPlinthHeight + h);
-        }
-
-        private static void BuildVolumetricWindow(MeshData walls, MeshData caps, MeshData frames, MeshData glass, Vector3 center, float hCell, int dir, float t, float h)
-        {
-            GetWallLine(center, hCell, dir, out Vector3 p0, out Vector3 p1, out _, out Vector3 side);
-            float length = Vector3.Distance(p0, p1);
-            Vector3 mid = (p0 + p1) * 0.5f;
-
-            float openingTop = h > WindowLintelHeight ? WindowLintelHeight : Mathf.Max(h, LowWallHeight + 0.35f);
-            float sillH = Mathf.Min(WindowSillHeight, openingTop * 0.45f);
-            if (sillH < 0.08f) sillH = Mathf.Min(0.12f, h * 0.35f);
-
-            if (sillH > 0.05f)
-            {
-                AddOrientedBox(walls, mid, dir, length + t, sillH, t, FloorPlinthHeight);
-            }
-
-            if (h > openingTop + 0.02f)
-            {
-                float topH = h - openingTop;
-                AddOrientedBox(walls, mid, dir, length + t, topH, t, FloorPlinthHeight + openingTop);
-                AddOrientedBox(caps, mid, dir, length + t + 0.02f, 0.03f, t + 0.02f, FloorPlinthHeight + h);
-            }
-            else
-            {
-                AddOrientedBox(caps, mid, dir, length + t + 0.02f, 0.03f, t + 0.02f, FloorPlinthHeight + Mathf.Max(sillH, h));
-            }
-
-            float glassBottom = FloorPlinthHeight + sillH;
-            float glassTop = FloorPlinthHeight + openingTop;
-            float glassH = Mathf.Max(0.18f, glassTop - glassBottom);
-            float openingW = Mathf.Max(0.35f, length * 0.72f);
-            AddOrientedBox(glass, mid, dir, openingW, glassH, 0.018f, glassBottom);
-            AddHollowFrame(frames, mid, side, dir, length, t * 1.12f, glassBottom, glassBottom + glassH);
-        }
-
-        private static void BuildVolumetricDoorway(MeshData walls, MeshData caps, MeshData frames, Vector3 center, float hCell, int dir, float t, float h)
-        {
-            GetWallLine(center, hCell, dir, out Vector3 p0, out Vector3 p1, out _, out Vector3 side);
-            float length = Vector3.Distance(p0, p1);
-            Vector3 mid = (p0 + p1) * 0.5f;
-
-            float openingH = Mathf.Min(DoorLintelHeight, Mathf.Max(h, LowWallHeight));
-            float postW = 0.08f;
-            float openingW = Mathf.Max(0.4f, length * 0.7f);
-
-            Vector3 post1 = mid + side * ((openingW + postW) * 0.5f);
-            Vector3 post2 = mid - side * ((openingW + postW) * 0.5f);
-            AddOrientedBox(frames, post1, dir, postW, openingH, t * 1.15f, FloorPlinthHeight);
-            AddOrientedBox(frames, post2, dir, postW, openingH, t * 1.15f, FloorPlinthHeight);
-            AddOrientedBox(frames, mid, dir, openingW, 0.035f, t * 1.2f, 0f);
-
-            if (h > openingH + 0.02f)
-            {
-                float topH = h - openingH;
-                AddOrientedBox(walls, mid, dir, length + t, topH, t, FloorPlinthHeight + openingH);
-                AddOrientedBox(frames, mid, dir, openingW + postW * 2f, 0.06f, t * 1.15f, FloorPlinthHeight + openingH - 0.03f);
-                AddOrientedBox(caps, mid, dir, length + t + 0.02f, 0.03f, t + 0.02f, FloorPlinthHeight + h);
-            }
-            else
-            {
-                AddOrientedBox(frames, mid, dir, openingW + postW * 2f, 0.045f, t * 1.15f, FloorPlinthHeight + openingH);
-            }
-        }
-
-        private static void AddPlinthSkirt(MeshData skirt, Vector3 center, float hCell, int dir, float height)
+        private static void BuildTranslucentWall(MeshData transWalls, MeshData edges, Vector3 center, float hCell, int dir, float t, float h)
         {
             GetWallLine(center, hCell, dir, out Vector3 p0, out Vector3 p1, out Vector3 norm, out Vector3 side);
             float length = Vector3.Distance(p0, p1);
             Vector3 mid = (p0 + p1) * 0.5f;
 
-            Vector3 size = (dir == 0 || dir == 2) ? new Vector3(length, height, 0.03f) : new Vector3(0.03f, height, length);
-            Vector3 pos = new Vector3(mid.x, height * 0.5f, mid.z) + norm * 0.015f;
-            skirt.AddBox(pos, size);
+            // 1. Translucent Frosted Glass Wall Body
+            Vector3 wallSize = (dir == 0 || dir == 2)
+                ? new Vector3(length, h, t)
+                : new Vector3(t, h, length);
+
+            Vector3 boxCenter = new Vector3(mid.x, FloorPlinthHeight + h * 0.5f, mid.z);
+            transWalls.AddBox(boxCenter, wallSize);
+
+            // 2. Glowing Architectural Top Edge Line
+            Vector3 topRailSize = (dir == 0 || dir == 2)
+                ? new Vector3(length, LineThickness, LineThickness * 1.5f)
+                : new Vector3(LineThickness * 1.5f, LineThickness, length);
+            Vector3 topRailCenter = new Vector3(mid.x, FloorPlinthHeight + h, mid.z);
+            edges.AddBox(topRailCenter, topRailSize);
+
+            // 3. Baseboard Line Accent
+            Vector3 baseRailSize = (dir == 0 || dir == 2)
+                ? new Vector3(length, LineThickness * 0.7f, LineThickness * 1.2f)
+                : new Vector3(LineThickness * 1.2f, LineThickness * 0.7f, length);
+            Vector3 baseRailCenter = new Vector3(mid.x, FloorPlinthHeight + LineThickness * 0.35f, mid.z);
+            edges.AddBox(baseRailCenter, baseRailSize);
         }
 
-        private static void AddHollowFrame(MeshData frames, Vector3 mid, Vector3 side, int dir, float length, float thickness, float y0, float y1)
+        private static void BuildTranslucentWindow(MeshData transWalls, MeshData edges, MeshData frames, MeshData glass, Vector3 center, float hCell, int dir, float t, float h)
         {
-            float h = Mathf.Max(0.12f, y1 - y0);
-            float openingW = Mathf.Max(0.3f, length * 0.72f);
-            float stile = Mathf.Max(0.045f, (length - openingW) * 0.5f);
-            float rail = 0.045f;
-            Vector3 left = mid - side * ((openingW + stile) * 0.5f);
-            Vector3 right = mid + side * ((openingW + stile) * 0.5f);
-            AddOrientedBox(frames, left, dir, stile, h, thickness, y0);
-            AddOrientedBox(frames, right, dir, stile, h, thickness, y0);
-            AddOrientedBox(frames, mid, dir, openingW, rail, thickness, y0);
-            AddOrientedBox(frames, mid, dir, openingW, rail, thickness, y1 - rail);
+            GetWallLine(center, hCell, dir, out Vector3 p0, out Vector3 p1, out Vector3 norm, out Vector3 side);
+            float length = Vector3.Distance(p0, p1);
+            Vector3 mid = (p0 + p1) * 0.5f;
+
+            float sillH = Mathf.Min(WindowSillHeight, h * 0.8f);
+
+            // Translucent Sill Wall
+            if (sillH > 0.05f)
+            {
+                Vector3 sillSize = (dir == 0 || dir == 2) ? new Vector3(length, sillH, t) : new Vector3(t, sillH, length);
+                Vector3 sillCenter = new Vector3(mid.x, FloorPlinthHeight + sillH * 0.5f, mid.z);
+                transWalls.AddBox(sillCenter, sillSize);
+
+                // Sill Top Edge Line
+                Vector3 sillRailSize = (dir == 0 || dir == 2) ? new Vector3(length, LineThickness, LineThickness * 1.4f) : new Vector3(LineThickness * 1.4f, LineThickness, length);
+                Vector3 sillRailCenter = new Vector3(mid.x, FloorPlinthHeight + sillH, mid.z);
+                edges.AddBox(sillRailCenter, sillRailSize);
+            }
+
+            // Top Lintel Wall if high wall
+            if (h > WindowLintelHeight)
+            {
+                float topH = h - WindowLintelHeight;
+                Vector3 topSize = (dir == 0 || dir == 2) ? new Vector3(length, topH, t) : new Vector3(t, topH, length);
+                Vector3 topCenter = new Vector3(mid.x, FloorPlinthHeight + WindowLintelHeight + topH * 0.5f, mid.z);
+                transWalls.AddBox(topCenter, topSize);
+
+                // Top Edge Line
+                Vector3 topRailSize = (dir == 0 || dir == 2) ? new Vector3(length, LineThickness, LineThickness * 1.5f) : new Vector3(LineThickness * 1.5f, LineThickness, length);
+                Vector3 topRailCenter = new Vector3(mid.x, FloorPlinthHeight + h, mid.z);
+                edges.AddBox(topRailCenter, topRailSize);
+            }
+
+            // Sleek Window Frame & Glass
+            float glassBottom = FloorPlinthHeight + sillH;
+            float glassTop = FloorPlinthHeight + (h > WindowLintelHeight ? WindowLintelHeight : h + 0.3f);
+            float glassH = Mathf.Max(0.2f, glassTop - glassBottom);
+            Vector3 glassCenter = new Vector3(mid.x, glassBottom + glassH * 0.5f, mid.z);
+
+            Vector3 glassSize = (dir == 0 || dir == 2) ? new Vector3(length * 0.94f, glassH, 0.015f) : new Vector3(0.015f, glassH, length * 0.94f);
+            glass.AddBox(glassCenter, glassSize);
+
+            // Architectural Slim Window Frame Outline
+            Vector3 frameSize = (dir == 0 || dir == 2) ? new Vector3(length * 0.96f, glassH + 0.03f, t * 1.05f) : new Vector3(t * 1.05f, glassH + 0.03f, length * 0.96f);
+            frames.AddBox(glassCenter, frameSize);
         }
 
-        private static void AddOrientedBox(MeshData data, Vector3 mid, int dir, float length, float height, float thickness, float yBottom)
+        private static void BuildTranslucentDoorway(MeshData transWalls, MeshData edges, MeshData frames, Vector3 center, float hCell, int dir, float t, float h)
         {
-            Vector3 size = (dir == 0 || dir == 2)
-                ? new Vector3(length, height, thickness)
-                : new Vector3(thickness, height, length);
-            Vector3 center = new Vector3(mid.x, yBottom + height * 0.5f, mid.z);
-            data.AddBox(center, size);
+            GetWallLine(center, hCell, dir, out Vector3 p0, out Vector3 p1, out Vector3 norm, out Vector3 side);
+            float length = Vector3.Distance(p0, p1);
+            Vector3 mid = (p0 + p1) * 0.5f;
+
+            float doorH = Mathf.Min(DoorLintelHeight, h);
+            float postW = 0.06f;
+
+            // Futuristic Slim Door Portal Posts
+            Vector3 post1Center = mid + side * (length * 0.46f);
+            post1Center.y = FloorPlinthHeight + doorH * 0.5f;
+            Vector3 post2Center = mid - side * (length * 0.46f);
+            post2Center.y = FloorPlinthHeight + doorH * 0.5f;
+
+            Vector3 postSize = (dir == 0 || dir == 2) ? new Vector3(postW, doorH, t * 1.15f) : new Vector3(t * 1.15f, doorH, postW);
+            frames.AddBox(post1Center, postSize);
+            frames.AddBox(post2Center, postSize);
+
+            // Lintel Header Beam
+            Vector3 lintelCenter = mid;
+            lintelCenter.y = FloorPlinthHeight + doorH;
+            Vector3 lintelSize = (dir == 0 || dir == 2) ? new Vector3(length, LineThickness * 1.2f, t * 1.15f) : new Vector3(t * 1.15f, LineThickness * 1.2f, length);
+            frames.AddBox(lintelCenter, lintelSize);
+
+            // Top Lintel Wall if high wall
+            if (h > DoorLintelHeight)
+            {
+                float topH = h - DoorLintelHeight;
+                Vector3 topSize = (dir == 0 || dir == 2) ? new Vector3(length, topH, t) : new Vector3(t, topH, length);
+                Vector3 topCenter = new Vector3(mid.x, FloorPlinthHeight + DoorLintelHeight + topH * 0.5f, mid.z);
+                transWalls.AddBox(topCenter, topSize);
+
+                // Top Edge Line
+                Vector3 topRailSize = (dir == 0 || dir == 2) ? new Vector3(length, LineThickness, LineThickness * 1.5f) : new Vector3(LineThickness * 1.5f, LineThickness, length);
+                Vector3 topRailCenter = new Vector3(mid.x, FloorPlinthHeight + h, mid.z);
+                edges.AddBox(topRailCenter, topRailSize);
+            }
+        }
+
+        private static void AddCornerPostIfNew(MeshData edges, HashSet<string> visited, Vector3 cornerPos, float height)
+        {
+            string key = $"{Mathf.RoundToInt(cornerPos.x * 100)},{Mathf.RoundToInt(cornerPos.z * 100)}";
+            if (visited.Contains(key)) return;
+            visited.Add(key);
+
+            Vector3 center = new Vector3(cornerPos.x, FloorPlinthHeight + height * 0.5f, cornerPos.z);
+            Vector3 size = new Vector3(PostThickness, height, PostThickness);
+            edges.AddBox(center, size);
+        }
+
+        private static void AddPlinthSkirt(MeshData plinth, MeshData edges, Vector3 center, float hCell, int dir, float height)
+        {
+            GetWallLine(center, hCell, dir, out Vector3 p0, out Vector3 p1, out Vector3 norm, out Vector3 side);
+            float length = Vector3.Distance(p0, p1);
+            Vector3 mid = (p0 + p1) * 0.5f;
+
+            Vector3 size = (dir == 0 || dir == 2) ? new Vector3(length, height, 0.025f) : new Vector3(0.025f, height, length);
+            Vector3 pos = new Vector3(mid.x, height * 0.5f, mid.z) + norm * 0.012f;
+            plinth.AddBox(pos, size);
+
+            // Plinth Edge Line
+            Vector3 lineSize = (dir == 0 || dir == 2) ? new Vector3(length, 0.015f, 0.035f) : new Vector3(0.035f, 0.015f, length);
+            Vector3 linePos = new Vector3(mid.x, height, mid.z) + norm * 0.012f;
+            edges.AddBox(linePos, lineSize);
         }
 
         private static void GetWallLine(Vector3 center, float hCell, int dir, out Vector3 p0, out Vector3 p1, out Vector3 norm, out Vector3 side)
