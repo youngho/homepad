@@ -10,16 +10,16 @@ namespace Homepad.UI
         [SerializeField] private CatalogDrawerUI drawer;
         [SerializeField] private Text captionText;
 
-        [Header("Typography")]
-        [SerializeField] private Font fontRegular;
-        [SerializeField] private Font fontSemiBold;
+        [Header("Scene Templates (Pretendard Inherited Slots)")]
+        [SerializeField] private GameObject templateCard;
+        [SerializeField] private GameObject templateSectionHeader;
+        [SerializeField] private GameObject templateRoomChip;
 
         private RectTransform contentRoot;
         private RoomRecord focusedRoom = null;
         private bool isAddRoomMode = false;
         private bool isRenameMode = false;
-        private string customInputName = "";
-        private readonly List<GameObject> activeCards = new List<GameObject>();
+        private readonly List<GameObject> activeInstances = new List<GameObject>();
 
         // Aesthetic Colors
         private static readonly Color BgCardColor = new Color(0.14f, 0.16f, 0.22f, 0.95f);
@@ -28,12 +28,13 @@ namespace Homepad.UI
         private static readonly Color AccentGreen = new Color(0.25f, 0.85f, 0.55f, 1.0f);
         private static readonly Color TextPrimary = new Color(0.95f, 0.96f, 0.98f, 1.0f);
         private static readonly Color TextSecondary = new Color(0.65f, 0.72f, 0.82f, 1.0f);
-        private static readonly Color DisabledColor = new Color(0.10f, 0.11f, 0.14f, 0.6f);
+        private static readonly Color DisabledBgColor = new Color(0.10f, 0.11f, 0.14f, 0.6f);
+        private static readonly Color DisabledTextColor = new Color(0.45f, 0.50f, 0.58f, 0.5f);
 
         private void Awake()
         {
-            EnsureFonts();
             FindContentRoot();
+            ResolveTemplates();
             if (captionText == null)
             {
                 var captionTrans = transform.Find("Caption");
@@ -42,25 +43,38 @@ namespace Homepad.UI
 
             if (captionText != null)
             {
-                captionText.font = fontSemiBold;
                 captionText.fontStyle = FontStyle.Normal;
-                captionText.fontSize = Mathf.Max(22, captionText.fontSize);
+                captionText.resizeTextForBestFit = false;
+                captionText.fontSize = Mathf.Max(26, captionText.fontSize);
             }
         }
 
-        private void EnsureFonts()
+        private void ResolveTemplates()
         {
-#if UNITY_EDITOR
-            if (fontRegular == null)
-                fontRegular = UnityEditor.AssetDatabase.LoadAssetAtPath<Font>("Assets/Fonts/Pretendard-Regular.otf");
-            if (fontSemiBold == null)
-                fontSemiBold = UnityEditor.AssetDatabase.LoadAssetAtPath<Font>("Assets/Fonts/Pretendard-SemiBold.otf");
-#endif
+            var templatesRoot = transform.Find("Templates");
+            if (templatesRoot != null)
+            {
+                if (templateCard == null)
+                {
+                    var t = templatesRoot.Find("TemplateCard");
+                    if (t != null) templateCard = t.gameObject;
+                }
+                if (templateSectionHeader == null)
+                {
+                    var t = templatesRoot.Find("TemplateSectionHeader");
+                    if (t != null) templateSectionHeader = t.gameObject;
+                }
+                if (templateRoomChip == null)
+                {
+                    var t = templatesRoot.Find("TemplateRoomChip");
+                    if (t != null) templateRoomChip = t.gameObject;
+                }
+            }
         }
 
         private void OnEnable()
         {
-            EnsureFonts();
+            ResolveTemplates();
             Subscribe(true);
             isAddRoomMode = false;
             isRenameMode = false;
@@ -70,7 +84,7 @@ namespace Homepad.UI
 
         private void Start()
         {
-            EnsureFonts();
+            ResolveTemplates();
             Subscribe(true);
             EnsureFocusedRoom();
             BuildUI();
@@ -155,7 +169,7 @@ namespace Homepad.UI
                     layout.childControlHeight = false;
                     layout.childForceExpandWidth = true;
                     layout.childForceExpandHeight = false;
-                    layout.spacing = 8f;
+                    layout.spacing = 10f;
                     layout.padding = new RectOffset(16, 16, 16, 24);
                 }
 
@@ -168,19 +182,21 @@ namespace Homepad.UI
             }
         }
 
-        private void ClearCards()
+        private void ClearActiveInstances()
         {
-            for (int i = 0; i < activeCards.Count; i++)
+            for (int i = 0; i < activeInstances.Count; i++)
             {
-                if (activeCards[i] != null) Destroy(activeCards[i]);
+                if (activeInstances[i] != null) Destroy(activeInstances[i]);
             }
-            activeCards.Clear();
+            activeInstances.Clear();
 
             if (contentRoot != null)
             {
                 for (int i = contentRoot.childCount - 1; i >= 0; i--)
                 {
                     var child = contentRoot.GetChild(i);
+                    // Protect template container
+                    if (child.name == "Templates") continue;
                     Destroy(child.gameObject);
                 }
             }
@@ -193,11 +209,11 @@ namespace Homepad.UI
 
         private void BuildUI()
         {
-            EnsureFonts();
+            ResolveTemplates();
             FindContentRoot();
             if (contentRoot == null) return;
 
-            ClearCards();
+            ClearActiveInstances();
 
             if (isAddRoomMode)
             {
@@ -230,46 +246,45 @@ namespace Homepad.UI
 
             if (focusedRoom == null)
             {
-                var emptyCard = CreateInfoCard("아직 생성된 공간이 없습니다.", "아래 버튼을 눌러 첫 번째 공간을 만들어보세요.");
-                activeCards.Add(emptyCard);
+                var emptyCard = InstantiateCard("아직 생성된 공간이 없습니다.", "아래 버튼을 눌러 첫 번째 공간을 만드세요.", false, null);
+                activeInstances.Add(emptyCard);
 
-                var addBtn = CreateCardButton("➕  새로운 공간 만들기", "거실, 안방, 서재 등 추가", true, () =>
+                var addBtn = InstantiateCard("➕  새로운 공간 만들기", "거실, 안방, 서재 등 추가", true, () =>
                 {
                     isAddRoomMode = true;
                     BuildUI();
                 }, AccentColor);
-                activeCards.Add(addBtn);
+                activeInstances.Add(addBtn);
                 return;
             }
 
             string roomEmoji = HomeItemDef.RoomEmoji(focusedRoom.Hint);
             string roomTitle = $"{roomEmoji}  {focusedRoom.Name}";
-            var roomHeader = CreateHeaderCard(roomTitle, "공간 이름 변경 및 설정", () =>
+            var roomHeader = InstantiateCard(roomTitle, "공간 이름 변경 및 설정", true, () =>
             {
-                customInputName = focusedRoom.Name;
                 isRenameMode = true;
                 BuildUI();
-            });
-            activeCards.Add(roomHeader);
+            }, new Color(0.18f, 0.22f, 0.32f, 1.0f));
+            activeInstances.Add(roomHeader);
 
             var installedItems = GetItemsInRoom(focusedRoom.Hint);
             if (installedItems.Count > 0)
             {
-                var secLabel = CreateSectionTitle($"현재 설치된 기기 ({installedItems.Count}개)");
-                activeCards.Add(secLabel);
+                var secLabel = InstantiateSectionHeader($"현재 설치된 기기 ({installedItems.Count}개)");
+                activeInstances.Add(secLabel);
 
                 for (int i = 0; i < installedItems.Count; i++)
                 {
                     var item = installedItems[i];
                     string itemEmoji = HomeItemDef.CategoryRules.TryGetValue(item.Kind, out var r) ? r.Emoji : "📦";
                     string status = item.Kind == HomeItemKind.Light ? "💡 조명 (클릭하여 제어)" : $"{GetSurfaceDesc(item.Surface)} 설치됨";
-                    var devCard = CreateInstalledDeviceCard($"{itemEmoji}  {item.DisplayName}", status);
-                    activeCards.Add(devCard);
+                    var devCard = InstantiateCard($"{itemEmoji}  {item.DisplayName}", status, true, null, new Color(0.11f, 0.13f, 0.18f, 0.9f), AccentGreen);
+                    activeInstances.Add(devCard);
                 }
             }
 
-            var addSecLabel = CreateSectionTitle("➕  이 공간에 장치 추가하기");
-            activeCards.Add(addSecLabel);
+            var addSecLabel = InstantiateSectionHeader("➕  이 공간에 장치 추가하기");
+            activeInstances.Add(addSecLabel);
 
             var categories = new[]
             {
@@ -293,19 +308,19 @@ namespace Homepad.UI
                 string title = $"{rule.Emoji}  {rule.CategoryName} 추가";
                 string sub = blocked ? "✓ 이미 설치됨" : $"설치 위치: {GetSurfaceDesc(rule.DefaultSurface)} | {rule.Description}";
 
-                var addDevBtn = CreateCardButton(title, sub, !blocked, () =>
+                var addDevBtn = InstantiateCard(title, sub, !blocked, () =>
                 {
                     AddDeviceToFocusedRoom(kind);
-                }, blocked ? DisabledColor : BgCardColor);
-                activeCards.Add(addDevBtn);
+                }, blocked ? DisabledBgColor : BgCardColor);
+                activeInstances.Add(addDevBtn);
             }
 
-            var addOtherRoomBtn = CreateCardButton("➕  새로운 공간 추가하기", "서재, 아이방, 드레스룸 등 다른 방 만들기", true, () =>
+            var addOtherRoomBtn = InstantiateCard("➕  새로운 공간 추가하기", "서재, 아이방, 드레스룸 등 다른 방 만들기", true, () =>
             {
                 isAddRoomMode = true;
                 BuildUI();
             }, new Color(0.18f, 0.22f, 0.30f));
-            activeCards.Add(addOtherRoomBtn);
+            activeInstances.Add(addOtherRoomBtn);
         }
 
         private void BuildRoomChipsBar(HomeLayout layout)
@@ -330,40 +345,52 @@ namespace Homepad.UI
                 string emoji = HomeItemDef.RoomEmoji(room.Hint);
                 string chipText = $"{emoji} {room.Name}";
 
-                var chipBtnGo = new GameObject($"Chip_{room.Name}");
-                chipBtnGo.transform.SetParent(chipsContainer.transform, false);
-
-                var chipRect = chipBtnGo.AddComponent<RectTransform>();
-                chipRect.sizeDelta = new Vector2(104f, 42f);
-
-                var chipImg = chipBtnGo.AddComponent<Image>();
-                chipImg.color = isSelected ? AccentColor : new Color(0.18f, 0.20f, 0.26f, 0.95f);
-
-                var chipBtn = chipBtnGo.AddComponent<Button>();
-                chipBtn.targetGraphic = chipImg;
-                var capturedRoom = room;
-                chipBtn.onClick.AddListener(() =>
+                GameObject chipGo;
+                if (templateRoomChip != null)
                 {
-                    focusedRoom = capturedRoom;
-                    BuildUI();
-                });
+                    chipGo = Instantiate(templateRoomChip, chipsContainer.transform);
+                }
+                else
+                {
+                    chipGo = new GameObject($"Chip_{room.Name}");
+                    chipGo.transform.SetParent(chipsContainer.transform, false);
+                    chipGo.AddComponent<RectTransform>().sizeDelta = new Vector2(110f, 44f);
+                    chipGo.AddComponent<Image>();
+                    chipGo.AddComponent<Button>();
+                }
+                chipGo.SetActive(true);
+                chipGo.name = $"Chip_{room.Name}";
 
-                var txtGo = new GameObject("Label");
-                txtGo.transform.SetParent(chipBtnGo.transform, false);
-                var txtRect = txtGo.AddComponent<RectTransform>();
-                txtRect.anchorMin = Vector2.zero;
-                txtRect.anchorMax = Vector2.one;
+                var chipImg = chipGo.GetComponent<Image>();
+                if (chipImg != null)
+                {
+                    chipImg.color = isSelected ? AccentColor : new Color(0.18f, 0.20f, 0.26f, 0.95f);
+                }
 
-                var txt = txtGo.AddComponent<Text>();
-                txt.font = isSelected ? fontSemiBold : fontRegular;
-                txt.fontStyle = FontStyle.Normal;
-                txt.text = chipText;
-                txt.fontSize = 16;
-                txt.color = isSelected ? Color.white : TextSecondary;
-                txt.alignment = TextAnchor.MiddleCenter;
+                var chipBtn = chipGo.GetComponent<Button>();
+                if (chipBtn != null)
+                {
+                    var capturedRoom = room;
+                    chipBtn.onClick.RemoveAllListeners();
+                    chipBtn.onClick.AddListener(() =>
+                    {
+                        focusedRoom = capturedRoom;
+                        BuildUI();
+                    });
+                }
+
+                var txt = chipGo.GetComponentInChildren<Text>();
+                if (txt != null)
+                {
+                    txt.text = chipText;
+                    txt.fontStyle = FontStyle.Normal;
+                    txt.fontSize = 18;
+                    txt.resizeTextForBestFit = false;
+                    txt.color = isSelected ? Color.white : TextSecondary;
+                }
             }
 
-            activeCards.Add(chipsContainer);
+            activeInstances.Add(chipsContainer);
         }
 
         // ==========================================
@@ -373,25 +400,25 @@ namespace Homepad.UI
         {
             if (captionText != null) captionText.text = "새로운 공간(방) 추가";
 
-            var backBtn = CreateCardButton("← 돌아가기", "공간 및 기기 관리 목록으로", true, () =>
+            var backBtn = InstantiateCard("← 돌아가기", "공간 및 기기 관리 목록으로", true, () =>
             {
                 isAddRoomMode = false;
                 BuildUI();
             }, AccentColor);
-            activeCards.Add(backBtn);
+            activeInstances.Add(backBtn);
 
-            var presetSec = CreateSectionTitle("추천 공간 프리셋 (원터치 1초 생성)");
-            activeCards.Add(presetSec);
+            var presetSec = InstantiateSectionHeader("추천 공간 프리셋 (원터치 1초 생성)");
+            activeInstances.Add(presetSec);
 
             var presets = RoomPreset.RecommendedPresets;
             for (int i = 0; i < presets.Length; i++)
             {
                 var preset = presets[i];
-                var presetBtn = CreateCardButton($"{preset.Emoji}  {preset.DefaultName}", "클릭 즉시 3D 디오라마에 공간 생성", true, () =>
+                var presetBtn = InstantiateCard($"{preset.Emoji}  {preset.DefaultName}", "클릭 즉시 3D 디오라마에 공간 생성", true, () =>
                 {
                     CreateRoomWithPreset(preset.Hint, preset.DefaultName);
                 }, BgCardColor);
-                activeCards.Add(presetBtn);
+                activeInstances.Add(presetBtn);
             }
         }
 
@@ -402,25 +429,25 @@ namespace Homepad.UI
         {
             if (captionText != null) captionText.text = $"[{focusedRoom.Name}] 이름 변경";
 
-            var backBtn = CreateCardButton("← 취소 및 돌아가기", "이름 변경을 취소합니다", true, () =>
+            var backBtn = InstantiateCard("← 취소 및 돌아가기", "이름 변경을 취소합니다", true, () =>
             {
                 isRenameMode = false;
                 BuildUI();
             }, AccentColor);
-            activeCards.Add(backBtn);
+            activeInstances.Add(backBtn);
 
             var renamePresets = new[] { "서재", "아이방", "드레스룸", "알파룸", "홈카페", "게임룸", "작업실", "게스트룸", "냥이방" };
-            var secLabel = CreateSectionTitle("추천 이름 선택");
-            activeCards.Add(secLabel);
+            var secLabel = InstantiateSectionHeader("추천 이름 선택");
+            activeInstances.Add(secLabel);
 
             for (int i = 0; i < renamePresets.Length; i++)
             {
                 string rName = renamePresets[i];
-                var nameBtn = CreateCardButton($"✏️  '{rName}'(으)로 변경", "공간 및 기기 표시명 즉시 갱신", true, () =>
+                var nameBtn = InstantiateCard($"✏️  '{rName}'(으)로 변경", "공간 및 기기 표시명 즉시 갱신", true, () =>
                 {
                     ApplyRename(rName);
                 }, BgCardColor);
-                activeCards.Add(nameBtn);
+                activeInstances.Add(nameBtn);
             }
         }
 
@@ -481,155 +508,111 @@ namespace Homepad.UI
         }
 
         // ==========================================
-        // UI Helpers & Component Factories
+        // Template Instantiation Factory Methods
         // ==========================================
-        private GameObject CreateHeaderCard(string title, string sub, UnityEngine.Events.UnityAction onClick)
+        private GameObject InstantiateSectionHeader(string text)
         {
-            var card = CreateCardButton(title, sub, true, onClick, new Color(0.18f, 0.22f, 0.32f, 1.0f));
-            return card;
-        }
+            GameObject go;
+            if (templateSectionHeader != null)
+            {
+                go = Instantiate(templateSectionHeader, contentRoot);
+            }
+            else
+            {
+                go = new GameObject($"Sec_{text}");
+                go.transform.SetParent(contentRoot, false);
+                go.AddComponent<RectTransform>().sizeDelta = new Vector2(0f, 36f);
+                go.AddComponent<Text>();
+            }
+            go.SetActive(true);
+            go.name = $"Sec_{text}";
 
-        private GameObject CreateSectionTitle(string text)
-        {
-            var go = new GameObject($"Sec_{text}");
-            go.transform.SetParent(contentRoot, false);
-            var rect = go.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(0f, 32f);
-
-            var txt = go.AddComponent<Text>();
-            txt.font = fontSemiBold;
-            txt.fontStyle = FontStyle.Normal;
-            txt.text = text;
-            txt.fontSize = 18;
-            txt.color = TextSecondary;
-            txt.alignment = TextAnchor.MiddleLeft;
+            var txt = go.GetComponent<Text>();
+            if (txt != null)
+            {
+                txt.text = text;
+                txt.fontSize = 22;
+                txt.fontStyle = FontStyle.Normal;
+                txt.resizeTextForBestFit = false;
+                txt.color = new Color(0.75f, 0.82f, 0.92f, 1.0f);
+            }
             return go;
         }
 
-        private GameObject CreateInstalledDeviceCard(string title, string status)
+        private GameObject InstantiateCard(
+            string title,
+            string sub,
+            bool interactable,
+            UnityEngine.Events.UnityAction onClick,
+            Color? bgColor = null,
+            Color? subTextColor = null)
         {
-            var go = new GameObject($"Installed_{title}");
-            go.transform.SetParent(contentRoot, false);
+            GameObject cardGo;
+            if (templateCard != null)
+            {
+                cardGo = Instantiate(templateCard, contentRoot);
+            }
+            else
+            {
+                cardGo = new GameObject($"Card_{title}");
+                cardGo.transform.SetParent(contentRoot, false);
+                cardGo.AddComponent<RectTransform>().sizeDelta = new Vector2(0f, 76f);
+                cardGo.AddComponent<Image>();
+                cardGo.AddComponent<Button>();
+            }
+            cardGo.SetActive(true);
+            cardGo.name = $"Card_{title}";
 
-            var rect = go.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(0f, 56f);
+            Color bg = bgColor ?? (interactable ? BgCardColor : DisabledBgColor);
+            var img = cardGo.GetComponent<Image>();
+            if (img != null) img.color = bg;
 
-            var img = go.AddComponent<Image>();
-            img.color = new Color(0.11f, 0.13f, 0.18f, 0.9f);
+            var btn = cardGo.GetComponent<Button>();
+            if (btn != null)
+            {
+                btn.interactable = interactable;
+                btn.onClick.RemoveAllListeners();
+                if (onClick != null) btn.onClick.AddListener(onClick);
 
-            var textGo = new GameObject("Text");
-            textGo.transform.SetParent(go.transform, false);
-            var textRect = textGo.AddComponent<RectTransform>();
-            textRect.anchorMin = Vector2.zero;
-            textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(16f, 4f);
-            textRect.offsetMax = new Vector2(-16f, -4f);
+                var colors = btn.colors;
+                colors.normalColor = bg;
+                colors.highlightedColor = BgCardHover;
+                colors.pressedColor = AccentColor * 0.75f;
+                colors.selectedColor = bg;
+                colors.disabledColor = DisabledBgColor;
+                btn.colors = colors;
+            }
 
-            var vGroup = textGo.AddComponent<VerticalLayoutGroup>();
-            vGroup.childAlignment = TextAnchor.MiddleLeft;
-            vGroup.childControlHeight = true;
-            vGroup.childControlWidth = true;
-            vGroup.spacing = 2f;
+            var texts = cardGo.GetComponentsInChildren<Text>(true);
+            Text titleTxt = null;
+            Text subTxt = null;
+            for (int i = 0; i < texts.Length; i++)
+            {
+                if (texts[i].name == "Title" || i == 0) titleTxt = texts[i];
+                if (texts[i].name == "Sub" || (i == 1 && texts.Length > 1)) subTxt = texts[i];
+            }
 
-            var t1 = new GameObject("T1").AddComponent<Text>();
-            t1.transform.SetParent(textGo.transform, false);
-            t1.font = fontSemiBold;
-            t1.fontStyle = FontStyle.Normal;
-            t1.text = title;
-            t1.fontSize = 18;
-            t1.color = TextPrimary;
+            if (titleTxt != null)
+            {
+                titleTxt.text = title;
+                titleTxt.fontSize = 20;
+                titleTxt.fontStyle = FontStyle.Normal;
+                titleTxt.resizeTextForBestFit = false;
+                titleTxt.color = interactable ? TextPrimary : DisabledTextColor;
+            }
 
-            var t2 = new GameObject("T2").AddComponent<Text>();
-            t2.transform.SetParent(textGo.transform, false);
-            t2.font = fontRegular;
-            t2.fontStyle = FontStyle.Normal;
-            t2.text = status;
-            t2.fontSize = 16;
-            t2.color = AccentGreen;
+            if (subTxt != null)
+            {
+                subTxt.text = sub;
+                subTxt.fontSize = 18;
+                subTxt.fontStyle = FontStyle.Normal;
+                subTxt.resizeTextForBestFit = false;
+                subTxt.color = interactable
+                    ? (subTextColor ?? (title.StartsWith("←") ? AccentColor : TextSecondary))
+                    : DisabledTextColor;
+            }
 
-            return go;
-        }
-
-        private GameObject CreateInfoCard(string title, string sub)
-        {
-            var go = new GameObject("InfoCard");
-            go.transform.SetParent(contentRoot, false);
-            var rect = go.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(0f, 68f);
-
-            var txt = go.AddComponent<Text>();
-            txt.font = fontRegular;
-            txt.fontStyle = FontStyle.Normal;
-            txt.text = $"{title}\n{sub}";
-            txt.fontSize = 16;
-            txt.color = TextSecondary;
-            txt.alignment = TextAnchor.MiddleCenter;
-            return go;
-        }
-
-        private GameObject CreateCardButton(string mainText, string subText, bool interactable, UnityEngine.Events.UnityAction onClick, Color? bgColor = null)
-        {
-            var btnGo = new GameObject($"Btn_{mainText}");
-            btnGo.transform.SetParent(contentRoot, false);
-
-            var rect = btnGo.AddComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(0f, 72f);
-
-            Color bg = bgColor ?? (interactable ? BgCardColor : DisabledColor);
-            var img = btnGo.AddComponent<Image>();
-            img.color = bg;
-
-            var btn = btnGo.AddComponent<Button>();
-            btn.interactable = interactable;
-            btn.targetGraphic = img;
-
-            var colors = btn.colors;
-            colors.normalColor = bg;
-            colors.highlightedColor = BgCardHover;
-            colors.pressedColor = AccentColor * 0.75f;
-            colors.selectedColor = bg;
-            colors.disabledColor = DisabledColor;
-            btn.colors = colors;
-
-            btn.onClick.AddListener(onClick);
-
-            var textGo = new GameObject("Texts");
-            textGo.transform.SetParent(btnGo.transform, false);
-            var textRect = textGo.AddComponent<RectTransform>();
-            textRect.anchorMin = Vector2.zero;
-            textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(16f, 6f);
-            textRect.offsetMax = new Vector2(-16f, -6f);
-
-            var vGroup = textGo.AddComponent<VerticalLayoutGroup>();
-            vGroup.childAlignment = TextAnchor.MiddleLeft;
-            vGroup.childControlHeight = true;
-            vGroup.childControlWidth = true;
-            vGroup.childForceExpandHeight = false;
-            vGroup.childForceExpandWidth = true;
-            vGroup.spacing = 2f;
-
-            var mainLabelGo = new GameObject("MainLabel");
-            mainLabelGo.transform.SetParent(textGo.transform, false);
-            var mainTxt = mainLabelGo.AddComponent<Text>();
-            mainTxt.font = fontSemiBold;
-            mainTxt.fontStyle = FontStyle.Normal;
-            mainTxt.text = mainText;
-            mainTxt.fontSize = 18;
-            mainTxt.color = interactable ? TextPrimary : new Color(0.5f, 0.55f, 0.62f, 0.5f);
-            mainTxt.alignment = TextAnchor.MiddleLeft;
-
-            var subLabelGo = new GameObject("SubLabel");
-            subLabelGo.transform.SetParent(textGo.transform, false);
-            var subTxt = subLabelGo.AddComponent<Text>();
-            subTxt.font = fontRegular;
-            subTxt.fontStyle = FontStyle.Normal;
-            subTxt.text = subText;
-            subTxt.fontSize = 16;
-            subTxt.color = interactable ? (mainText.StartsWith("←") ? AccentColor : TextSecondary) : new Color(0.45f, 0.50f, 0.58f, 0.4f);
-            subTxt.alignment = TextAnchor.MiddleLeft;
-
-            return btnGo;
+            return cardGo;
         }
 
         private static string GetSurfaceDesc(Surface surface)
