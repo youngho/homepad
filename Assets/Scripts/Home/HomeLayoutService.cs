@@ -76,18 +76,15 @@ namespace Homepad.Home
         public PlacedItem Place(HomeItemDef def, Vector2Int cell, int wallDir)
         {
             if (def == null) return null;
-            if (layout.IsCatalogBlocked(def)) return null;
+            RoomRecord room = layout.RoomAt(cell) ?? layout.FindRoom(def.RoomHint);
+            if (room == null) return null;
+            return PlaceIntoRoom(def, room, cell, wallDir);
+        }
 
-            RoomRecord room;
-            if (def.Kind == HomeItemKind.ElectricCurtain)
-            {
-                room = layout.RoomAt(cell);
-                if (room == null) room = layout.Rooms.Count > 0 ? layout.Rooms[0] : EnsureRoom(def.RoomHint);
-            }
-            else
-            {
-                room = EnsureRoom(def.RoomHint);
-            }
+        public PlacedItem PlaceIntoRoom(HomeItemDef def, RoomRecord room, Vector2Int cell, int wallDir)
+        {
+            if (def == null || room == null) return null;
+            if (layout.IsCatalogBlocked(def)) return null;
 
             if (!IsCellInRoom(cell, room))
             {

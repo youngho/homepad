@@ -161,11 +161,9 @@ namespace Homepad.Home
             {
                 var item = Items[i];
                 if (item.Kind != kind) continue;
-                if (kind == HomeItemKind.Heating) return item.RoomHint == hint || HasHeatingInHint(hint);
                 if (kind == HomeItemKind.Gas || kind == HomeItemKind.Vent || kind == HomeItemKind.Elevator)
-                {
                     return true;
-                }
+                if (item.RoomHint == hint) return true;
             }
 
             return false;

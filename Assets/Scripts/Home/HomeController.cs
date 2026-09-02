@@ -283,23 +283,20 @@ namespace Homepad.Home
 
         public bool PlaceFromCatalog(HomeItemDef def)
         {
-            if (def == null) return false;
+            return PlaceFromCatalog(def, null);
+        }
+
+        public bool PlaceFromCatalog(HomeItemDef def, RoomRecord room)
+        {
+            if (def == null || layout == null || service == null) return false;
+            if (room == null) room = layout.FindRoom(def.RoomHint);
+            if (room == null) return false;
             if (layout.IsCatalogBlocked(def)) return false;
             CancelPlacement();
 
-            RoomRecord room;
-            if (def.Kind == HomeItemKind.ElectricCurtain && layout.Rooms.Count > 0)
-            {
-                room = layout.Rooms[0];
-            }
-            else
-            {
-                room = service.EnsureRoom(def.RoomHint);
-            }
-
             var cell = service.DefaultCell(def, room);
             int wallDir = service.DefaultWallDir(def, room, cell);
-            var item = service.Place(def, cell, wallDir);
+            var item = service.PlaceIntoRoom(def, room, cell, wallDir);
             if (item == null) return false;
 
             builder.Rebuild();
