@@ -9,7 +9,7 @@ namespace Homepad.Home
         public const float WallThickness = 0.08f;
         public const float HighWallHeight = 1.95f;
         public const float LowWallHeight = 0.50f;
-        public const float InteriorWallHeight = 1.05f;
+        public const float InteriorWallHeight = 1.95f;
         public const float WindowSillHeight = 0.70f;
         public const float WindowLintelHeight = 1.65f;
         public const float DoorLintelHeight = 1.60f;
