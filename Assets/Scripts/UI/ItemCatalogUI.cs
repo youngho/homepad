@@ -21,11 +21,12 @@ namespace Homepad.UI
         private bool isRenameMode = false;
         private readonly List<GameObject> activeInstances = new List<GameObject>();
 
-        // Aesthetic Colors
+        // Aesthetic Clean Palette
         private static readonly Color BgCardColor = new Color(0.14f, 0.16f, 0.22f, 0.95f);
         private static readonly Color BgCardHover = new Color(0.20f, 0.25f, 0.35f, 1.0f);
         private static readonly Color AccentColor = new Color(0.25f, 0.65f, 1.0f, 1.0f);
         private static readonly Color AccentGreen = new Color(0.25f, 0.85f, 0.55f, 1.0f);
+        private static readonly Color AccentDanger = new Color(0.95f, 0.35f, 0.35f, 1.0f);
         private static readonly Color TextPrimary = new Color(0.95f, 0.96f, 0.98f, 1.0f);
         private static readonly Color TextSecondary = new Color(0.65f, 0.72f, 0.82f, 1.0f);
         private static readonly Color DisabledBgColor = new Color(0.10f, 0.11f, 0.14f, 0.6f);
@@ -195,7 +196,6 @@ namespace Homepad.UI
                 for (int i = contentRoot.childCount - 1; i >= 0; i--)
                 {
                     var child = contentRoot.GetChild(i);
-                    // Protect template container
                     if (child.name == "Templates") continue;
                     Destroy(child.gameObject);
                 }
@@ -215,6 +215,16 @@ namespace Homepad.UI
 
             ClearActiveInstances();
 
+            var home = HomeController.Instance;
+            var layout = home != null ? home.Layout : null;
+
+            // 1. If house has NO rooms at all: Show ONLY Space Creation flow
+            if (layout == null || layout.Rooms.Count == 0)
+            {
+                BuildEmptyHouseUI();
+                return;
+            }
+
             if (isAddRoomMode)
             {
                 BuildAddRoomModeUI();
@@ -230,83 +240,106 @@ namespace Homepad.UI
         }
 
         // ==========================================
-        // 1. Room-First Device Management View
+        // 1. Empty House Mode (공간 만들기만 노출)
+        // ==========================================
+        private void BuildEmptyHouseUI()
+        {
+            if (captionText != null) captionText.text = "공간 만들기";
+
+            var sec = InstantiateSectionHeader("우리집 첫 공간을 만드세요");
+            activeInstances.Add(sec);
+
+            var presets = RoomPreset.RecommendedPresets;
+            for (int i = 0; i < presets.Length; i++)
+            {
+                var preset = presets[i];
+                var presetBtn = InstantiateCard($"{preset.Emoji}  {preset.DefaultName} 만들기", "클릭 즉시 3D 디오라마에 공간 생성", true, () =>
+                {
+                    CreateRoomWithPreset(preset.Hint, preset.DefaultName);
+                }, BgCardColor);
+                activeInstances.Add(presetBtn);
+            }
+        }
+
+        // ==========================================
+        // 2. Focused Room Management View
         // ==========================================
         private void BuildRoomDeviceModeUI()
         {
             var home = HomeController.Instance;
             var layout = home != null ? home.Layout : null;
 
-            if (captionText != null) captionText.text = "우리집 공간 & 장치 관리";
+            if (captionText != null) captionText.text = "공간 및 장치 관리";
 
+            // A. Room Chips Bar (상단 공간 탭)
             if (layout != null && layout.Rooms.Count > 0)
             {
                 BuildRoomChipsBar(layout);
             }
 
-            if (focusedRoom == null)
-            {
-                var emptyCard = InstantiateCard("아직 생성된 공간이 없습니다.", "아래 버튼을 눌러 첫 번째 공간을 만드세요.", false, null);
-                activeInstances.Add(emptyCard);
+            if (focusedRoom == null) return;
 
-                var addBtn = InstantiateCard("➕  새로운 공간 만들기", "거실, 안방, 서재 등 추가", true, () =>
-                {
-                    isAddRoomMode = true;
-                    BuildUI();
-                }, AccentColor);
-                activeInstances.Add(addBtn);
-                return;
-            }
-
+            // B. Focused Room Header (이름 변경 / 공간 삭제)
             string roomEmoji = HomeItemDef.RoomEmoji(focusedRoom.Hint);
             string roomTitle = $"{roomEmoji}  {focusedRoom.Name}";
-            var roomHeader = InstantiateCard(roomTitle, "공간 이름 변경 및 설정", true, () =>
+            var roomHeader = InstantiateRoomHeaderCard(roomTitle, () =>
             {
                 isRenameMode = true;
                 BuildUI();
-            }, new Color(0.18f, 0.22f, 0.32f, 1.0f));
+            }, () =>
+            {
+                DeleteCurrentRoom();
+            });
             activeInstances.Add(roomHeader);
 
+            // C. Section: 현재 설치된 기기 목록 (개별 삭제 버튼 포함)
             var installedItems = GetItemsInRoom(focusedRoom.Hint);
             if (installedItems.Count > 0)
             {
-                var secLabel = InstantiateSectionHeader($"현재 설치된 기기 ({installedItems.Count}개)");
+                var secLabel = InstantiateSectionHeader($"설치된 기기 ({installedItems.Count}개)");
                 activeInstances.Add(secLabel);
 
                 for (int i = 0; i < installedItems.Count; i++)
                 {
                     var item = installedItems[i];
                     string itemEmoji = HomeItemDef.CategoryRules.TryGetValue(item.Kind, out var r) ? r.Emoji : "📦";
-                    string status = item.Kind == HomeItemKind.Light ? "💡 조명 (클릭하여 제어)" : $"{GetSurfaceDesc(item.Surface)} 설치됨";
-                    var devCard = InstantiateCard($"{itemEmoji}  {item.DisplayName}", status, true, null, new Color(0.11f, 0.13f, 0.18f, 0.9f), AccentGreen);
+                    string status = item.Kind == HomeItemKind.Light ? "💡 조명" : $"{GetSurfaceDesc(item.Surface)} 설치";
+
+                    var devCard = InstantiateDeviceWithDeleteCard(
+                        $"{itemEmoji}  {item.DisplayName}",
+                        status,
+                        () =>
+                        {
+                            home?.RemoveItem(item.InstanceId);
+                        });
                     activeInstances.Add(devCard);
                 }
             }
 
-            var addSecLabel = InstantiateSectionHeader("➕  이 공간에 장치 추가하기");
+            // D. Section: 보고 있는 방에 장치 추가 (묻지 않고 바로 추가!)
+            var addSecLabel = InstantiateSectionHeader($"➕  {focusedRoom.Name}에 장치 추가");
             activeInstances.Add(addSecLabel);
 
-            var categories = new[]
+            // Room-attachable device kinds (Gas and Elevator are separate infrastructure)
+            var roomDeviceKinds = new[]
             {
                 HomeItemKind.Light,
                 HomeItemKind.Heating,
                 HomeItemKind.ElectricCurtain,
                 HomeItemKind.AirConditioner,
-                HomeItemKind.Vent,
-                HomeItemKind.Gas,
-                HomeItemKind.Elevator
+                HomeItemKind.Vent
             };
 
-            for (int i = 0; i < categories.Length; i++)
+            for (int i = 0; i < roomDeviceKinds.Length; i++)
             {
-                var kind = categories[i];
+                var kind = roomDeviceKinds[i];
                 if (!HomeItemDef.CategoryRules.TryGetValue(kind, out var rule)) continue;
 
                 var def = HomeItemDef.Create(kind, focusedRoom.Hint, focusedRoom.Name);
                 bool blocked = layout != null && layout.IsCatalogBlocked(def);
 
                 string title = $"{rule.Emoji}  {rule.CategoryName} 추가";
-                string sub = blocked ? "✓ 이미 설치됨" : $"설치 위치: {GetSurfaceDesc(rule.DefaultSurface)} | {rule.Description}";
+                string sub = blocked ? "✓ 이미 설치됨" : $"설치 위치: {GetSurfaceDesc(rule.DefaultSurface)}";
 
                 var addDevBtn = InstantiateCard(title, sub, !blocked, () =>
                 {
@@ -315,12 +348,25 @@ namespace Homepad.UI
                 activeInstances.Add(addDevBtn);
             }
 
-            var addOtherRoomBtn = InstantiateCard("➕  새로운 공간 추가하기", "서재, 아이방, 드레스룸 등 다른 방 만들기", true, () =>
+            // E. Section: 전체 시설 (가스·엘리베이터: 방 묻지 않고 전용 위치 자동 배치)
+            var infraSecLabel = InstantiateSectionHeader("🏢  세대 공용 / 안전 시설");
+            activeInstances.Add(infraSecLabel);
+
+            var gasDef = HomeItemDef.Create(HomeItemKind.Gas, RoomHint.Kitchen, "주방");
+            bool gasBlocked = layout != null && layout.IsCatalogBlocked(gasDef);
+            var gasBtn = InstantiateCard("🛡️  가스 밸브", gasBlocked ? "✓ 주방에 설치됨" : "주방 안전 자동 차단 밸브", !gasBlocked, () =>
             {
-                isAddRoomMode = true;
-                BuildUI();
-            }, new Color(0.18f, 0.22f, 0.30f));
-            activeInstances.Add(addOtherRoomBtn);
+                home?.PlaceFromCatalog(gasDef);
+            }, gasBlocked ? DisabledBgColor : BgCardColor);
+            activeInstances.Add(gasBtn);
+
+            var elDef = HomeItemDef.Create(HomeItemKind.Elevator, RoomHint.Entrance, "현관");
+            bool elBlocked = layout != null && layout.IsCatalogBlocked(elDef);
+            var elBtn = InstantiateCard("🛗  엘리베이터", elBlocked ? "✓ 현관에 설치됨" : "현관 사전 호출 제어기", !elBlocked, () =>
+            {
+                home?.PlaceFromCatalog(elDef);
+            }, elBlocked ? DisabledBgColor : BgCardColor);
+            activeInstances.Add(elBtn);
         }
 
         private void BuildRoomChipsBar(HomeLayout layout)
@@ -345,19 +391,7 @@ namespace Homepad.UI
                 string emoji = HomeItemDef.RoomEmoji(room.Hint);
                 string chipText = $"{emoji} {room.Name}";
 
-                GameObject chipGo;
-                if (templateRoomChip != null)
-                {
-                    chipGo = Instantiate(templateRoomChip, chipsContainer.transform);
-                }
-                else
-                {
-                    chipGo = new GameObject($"Chip_{room.Name}");
-                    chipGo.transform.SetParent(chipsContainer.transform, false);
-                    chipGo.AddComponent<RectTransform>().sizeDelta = new Vector2(110f, 44f);
-                    chipGo.AddComponent<Image>();
-                    chipGo.AddComponent<Button>();
-                }
+                var chipGo = Instantiate(templateRoomChip, chipsContainer.transform);
                 chipGo.SetActive(true);
                 chipGo.name = $"Chip_{room.Name}";
 
@@ -390,24 +424,49 @@ namespace Homepad.UI
                 }
             }
 
+            // Add Room Chip Button
+            var addChipGo = Instantiate(templateRoomChip, chipsContainer.transform);
+            addChipGo.SetActive(true);
+            addChipGo.name = "Chip_AddRoom";
+            var addImg = addChipGo.GetComponent<Image>();
+            if (addImg != null) addImg.color = new Color(0.20f, 0.24f, 0.32f, 0.95f);
+            var addBtn = addChipGo.GetComponent<Button>();
+            if (addBtn != null)
+            {
+                addBtn.onClick.RemoveAllListeners();
+                addBtn.onClick.AddListener(() =>
+                {
+                    isAddRoomMode = true;
+                    BuildUI();
+                });
+            }
+            var addTxt = addChipGo.GetComponentInChildren<Text>();
+            if (addTxt != null)
+            {
+                addTxt.text = "➕ 공간 추가";
+                addTxt.fontStyle = FontStyle.Normal;
+                addTxt.fontSize = 18;
+                addTxt.color = AccentColor;
+            }
+
             activeInstances.Add(chipsContainer);
         }
 
         // ==========================================
-        // 2. Add New Room View (Preset Chips)
+        // 3. Add New Room View (Preset Chips)
         // ==========================================
         private void BuildAddRoomModeUI()
         {
             if (captionText != null) captionText.text = "새로운 공간(방) 추가";
 
-            var backBtn = InstantiateCard("← 돌아가기", "공간 및 기기 관리 목록으로", true, () =>
+            var backBtn = InstantiateCard("← 돌아가기", "공간 및 기기 목록으로 복귀", true, () =>
             {
                 isAddRoomMode = false;
                 BuildUI();
             }, AccentColor);
             activeInstances.Add(backBtn);
 
-            var presetSec = InstantiateSectionHeader("추천 공간 프리셋 (원터치 1초 생성)");
+            var presetSec = InstantiateSectionHeader("추천 공간 프리셋 (원터치 생성)");
             activeInstances.Add(presetSec);
 
             var presets = RoomPreset.RecommendedPresets;
@@ -423,7 +482,7 @@ namespace Homepad.UI
         }
 
         // ==========================================
-        // 3. Rename Room Mode
+        // 4. Rename Room Mode
         // ==========================================
         private void BuildRenameRoomModeUI()
         {
@@ -477,6 +536,19 @@ namespace Homepad.UI
             BuildUI();
         }
 
+        private void DeleteCurrentRoom()
+        {
+            if (focusedRoom == null) return;
+            var home = HomeController.Instance;
+            if (home != null)
+            {
+                home.DeleteRoom(focusedRoom.Id);
+                focusedRoom = null;
+                EnsureFocusedRoom();
+                BuildUI();
+            }
+        }
+
         private void AddDeviceToFocusedRoom(HomeItemKind kind)
         {
             if (focusedRoom == null) return;
@@ -508,22 +580,11 @@ namespace Homepad.UI
         }
 
         // ==========================================
-        // Template Instantiation Factory Methods
+        // Template Instantiation Methods
         // ==========================================
         private GameObject InstantiateSectionHeader(string text)
         {
-            GameObject go;
-            if (templateSectionHeader != null)
-            {
-                go = Instantiate(templateSectionHeader, contentRoot);
-            }
-            else
-            {
-                go = new GameObject($"Sec_{text}");
-                go.transform.SetParent(contentRoot, false);
-                go.AddComponent<RectTransform>().sizeDelta = new Vector2(0f, 36f);
-                go.AddComponent<Text>();
-            }
+            var go = Instantiate(templateSectionHeader, contentRoot);
             go.SetActive(true);
             go.name = $"Sec_{text}";
 
@@ -539,27 +600,84 @@ namespace Homepad.UI
             return go;
         }
 
+        private GameObject InstantiateRoomHeaderCard(string title, UnityEngine.Events.UnityAction onRename, UnityEngine.Events.UnityAction onDelete)
+        {
+            var cardGo = Instantiate(templateCard, contentRoot);
+            cardGo.SetActive(true);
+            cardGo.name = $"RoomHeader_{title}";
+
+            var img = cardGo.GetComponent<Image>();
+            if (img != null) img.color = new Color(0.18f, 0.22f, 0.32f, 1.0f);
+
+            var texts = cardGo.GetComponentsInChildren<Text>(true);
+            if (texts.Length > 0 && texts[0] != null)
+            {
+                texts[0].text = title;
+                texts[0].fontSize = 22;
+                texts[0].fontStyle = FontStyle.Normal;
+                texts[0].color = TextPrimary;
+            }
+            if (texts.Length > 1 && texts[1] != null)
+            {
+                texts[1].text = "✏️ 이름 변경  |  🗑️ 공간 삭제";
+                texts[1].fontSize = 18;
+                texts[1].fontStyle = FontStyle.Normal;
+                texts[1].color = AccentColor;
+            }
+
+            var btn = cardGo.GetComponent<Button>();
+            if (btn != null)
+            {
+                btn.onClick.RemoveAllListeners();
+                btn.onClick.AddListener(onRename);
+            }
+
+            return cardGo;
+        }
+
+        private GameObject InstantiateDeviceWithDeleteCard(string title, string status, UnityEngine.Events.UnityAction onDelete)
+        {
+            var cardGo = Instantiate(templateCard, contentRoot);
+            cardGo.SetActive(true);
+            cardGo.name = $"Installed_{title}";
+
+            var img = cardGo.GetComponent<Image>();
+            if (img != null) img.color = new Color(0.11f, 0.13f, 0.18f, 0.95f);
+
+            var texts = cardGo.GetComponentsInChildren<Text>(true);
+            if (texts.Length > 0 && texts[0] != null)
+            {
+                texts[0].text = title;
+                texts[0].fontSize = 20;
+                texts[0].fontStyle = FontStyle.Normal;
+                texts[0].color = TextPrimary;
+            }
+            if (texts.Length > 1 && texts[1] != null)
+            {
+                texts[1].text = $"{status}   [🗑️ 삭제]";
+                texts[1].fontSize = 18;
+                texts[1].fontStyle = FontStyle.Normal;
+                texts[1].color = AccentGreen;
+            }
+
+            var btn = cardGo.GetComponent<Button>();
+            if (btn != null)
+            {
+                btn.onClick.RemoveAllListeners();
+                btn.onClick.AddListener(onDelete);
+            }
+
+            return cardGo;
+        }
+
         private GameObject InstantiateCard(
             string title,
             string sub,
             bool interactable,
             UnityEngine.Events.UnityAction onClick,
-            Color? bgColor = null,
-            Color? subTextColor = null)
+            Color? bgColor = null)
         {
-            GameObject cardGo;
-            if (templateCard != null)
-            {
-                cardGo = Instantiate(templateCard, contentRoot);
-            }
-            else
-            {
-                cardGo = new GameObject($"Card_{title}");
-                cardGo.transform.SetParent(contentRoot, false);
-                cardGo.AddComponent<RectTransform>().sizeDelta = new Vector2(0f, 76f);
-                cardGo.AddComponent<Image>();
-                cardGo.AddComponent<Button>();
-            }
+            var cardGo = Instantiate(templateCard, contentRoot);
             cardGo.SetActive(true);
             cardGo.name = $"Card_{title}";
 
@@ -607,9 +725,7 @@ namespace Homepad.UI
                 subTxt.fontSize = 18;
                 subTxt.fontStyle = FontStyle.Normal;
                 subTxt.resizeTextForBestFit = false;
-                subTxt.color = interactable
-                    ? (subTextColor ?? (title.StartsWith("←") ? AccentColor : TextSecondary))
-                    : DisabledTextColor;
+                subTxt.color = interactable ? (title.StartsWith("←") ? AccentColor : TextSecondary) : DisabledTextColor;
             }
 
             return cardGo;

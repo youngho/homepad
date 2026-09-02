@@ -229,6 +229,37 @@ namespace Homepad.Home
             return success;
         }
 
+        public bool DeleteRoom(int roomId)
+        {
+            if (service == null) return false;
+            bool success = service.DeleteRoom(roomId);
+            if (success)
+            {
+                if (SelectedRoom != null && SelectedRoom.Id == roomId)
+                {
+                    SelectedRoom = layout.Rooms.Count > 0 ? layout.Rooms[0] : null;
+                }
+                if (builder != null) builder.Rebuild();
+                Save();
+                FrameCamera();
+                NotifyLayoutChanged();
+            }
+            return success;
+        }
+
+        public bool RemoveItem(string instanceId)
+        {
+            if (service == null) return false;
+            bool success = service.RemoveItem(instanceId);
+            if (success)
+            {
+                if (builder != null) builder.Rebuild();
+                Save();
+                NotifyLayoutChanged();
+            }
+            return success;
+        }
+
         public RoomRecord RaycastRoom(Vector2 screenPos)
         {
             var cam = Camera.main;

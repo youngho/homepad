@@ -154,6 +154,53 @@ namespace Homepad.Home
             PaintRoom(room);
         }
 
+        public bool RemoveItem(string instanceId)
+        {
+            var item = layout.FindItem(instanceId);
+            if (item == null) return false;
+
+            if (item.Kind == HomeItemKind.ElectricCurtain)
+            {
+                ClearWindow(item.Cell, item.WallDir);
+                RebuildWalls();
+            }
+
+            layout.Items.Remove(item);
+            return true;
+        }
+
+        public bool DeleteRoom(int roomId)
+        {
+            var room = layout.FindRoomById(roomId);
+            if (room == null) return false;
+
+            // Remove all items in room
+            for (int i = layout.Items.Count - 1; i >= 0; i--)
+            {
+                if (layout.Items[i].RoomHint == room.Hint)
+                {
+                    if (layout.Items[i].Kind == HomeItemKind.ElectricCurtain)
+                    {
+                        ClearWindow(layout.Items[i].Cell, layout.Items[i].WallDir);
+                    }
+                    layout.Items.RemoveAt(i);
+                }
+            }
+
+            // Clear cells
+            for (int x = 0; x < room.Size.x; x++)
+            {
+                for (int y = 0; y < room.Size.y; y++)
+                {
+                    layout.Cells.Remove(room.Origin + new Vector2Int(x, y));
+                }
+            }
+
+            layout.Rooms.Remove(room);
+            RebuildWalls();
+            return true;
+        }
+
         public void RemoveRoomIfEmpty(RoomHint hint)
         {
             var room = layout.FindRoom(hint);
