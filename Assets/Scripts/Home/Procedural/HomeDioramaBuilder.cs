@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -10,14 +9,13 @@ namespace Homepad.Home
         public const float WallThickness = 0.08f;
         public const float HighWallHeight = 1.95f;
         public const float LowWallHeight = 0.50f;
+        public const float InteriorWallHeight = 1.05f;
         public const float WindowSillHeight = 0.70f;
         public const float WindowLintelHeight = 1.65f;
         public const float DoorLintelHeight = 1.60f;
         public const float FloorPlinthHeight = 0.04f;
-
-        // Line accent dimensions
-        public const float LineThickness = 0.032f;
-        public const float PostThickness = 0.045f;
+        public const float LineThickness = 0.018f;
+        public const float PostThickness = 0.028f;
 
         public sealed class MeshData
         {
@@ -56,17 +54,11 @@ namespace Homepad.Home
                 Vector3 c111 = center + new Vector3(h.x, h.y, h.z);
                 Vector3 c011 = center + new Vector3(-h.x, h.y, h.z);
 
-                // Front (-Z)
                 AddQuad(c000, c100, c110, c010, Vector3.back);
-                // Back (+Z)
                 AddQuad(c101, c001, c011, c111, Vector3.forward);
-                // Left (-X)
                 AddQuad(c001, c000, c010, c011, Vector3.left);
-                // Right (+X)
                 AddQuad(c100, c101, c111, c110, Vector3.right);
-                // Top (+Y)
                 AddQuad(c010, c110, c111, c011, Vector3.up);
-                // Bottom (-Y)
                 AddQuad(c001, c101, c100, c000, Vector3.down);
             }
 
@@ -97,13 +89,19 @@ namespace Homepad.Home
 
         public static BuildOutput Generate(HomeLayout layout)
         {
+            Vector3 forward = Camera.main != null ? Camera.main.transform.forward : new Vector3(1f, -1f, 1f);
+            return Generate(layout, forward);
+        }
+
+        public static BuildOutput Generate(HomeLayout layout, Vector3 cameraForward)
+        {
             var output = new BuildOutput();
             if (layout == null || layout.Rooms.Count == 0) return output;
 
+            var cutaway = HomeLayout.CutawayView.FromCamera(cameraForward);
             float cSize = HomeLayout.CellSize;
             float t = WallThickness;
 
-            // 1. Build Room Floors (1 unified floor quad per room)
             foreach (var room in layout.Rooms)
             {
                 if (!output.RoomFloors.TryGetValue(room.Hint, out var floorMesh))
@@ -114,8 +112,6 @@ namespace Homepad.Home
 
                 Vector3 min = new Vector3(room.Origin.x * cSize, FloorPlinthHeight, room.Origin.y * cSize);
                 Vector3 max = new Vector3((room.Origin.x + room.Size.x) * cSize, FloorPlinthHeight, (room.Origin.y + room.Size.y) * cSize);
-
-                // Room floor top quad
                 floorMesh.AddQuad(
                     new Vector3(min.x, FloorPlinthHeight, max.z),
                     new Vector3(max.x, FloorPlinthHeight, max.z),
@@ -124,7 +120,6 @@ namespace Homepad.Home
                     Vector3.up);
             }
 
-            // 2. Build Room Boundary Wall Spans
             var processedEdges = new HashSet<string>();
             var processedCorners = new HashSet<string>();
 
@@ -133,17 +128,15 @@ namespace Homepad.Home
                 Vector3 rMin = new Vector3(room.Origin.x * cSize, 0f, room.Origin.y * cSize);
                 Vector3 rMax = new Vector3((room.Origin.x + room.Size.x) * cSize, 0f, (room.Origin.y + room.Size.y) * cSize);
 
-                // 4 Room Corners
                 Vector3 cNW = new Vector3(rMin.x, 0f, rMax.z);
                 Vector3 cNE = new Vector3(rMax.x, 0f, rMax.z);
                 Vector3 cSE = new Vector3(rMax.x, 0f, rMin.z);
                 Vector3 cSW = new Vector3(rMin.x, 0f, rMin.z);
 
-                // 4 Sides: North (0), East (1), South (2), West (3)
-                BuildRoomSide(output, layout, room, 0, cNW, cNE, processedEdges, processedCorners, t);
-                BuildRoomSide(output, layout, room, 1, cNE, cSE, processedEdges, processedCorners, t);
-                BuildRoomSide(output, layout, room, 2, cSE, cSW, processedEdges, processedCorners, t);
-                BuildRoomSide(output, layout, room, 3, cSW, cNW, processedEdges, processedCorners, t);
+                BuildRoomSide(output, layout, room, cutaway, 0, cNW, cNE, processedEdges, processedCorners, t);
+                BuildRoomSide(output, layout, room, cutaway, 1, cNE, cSE, processedEdges, processedCorners, t);
+                BuildRoomSide(output, layout, room, cutaway, 2, cSE, cSW, processedEdges, processedCorners, t);
+                BuildRoomSide(output, layout, room, cutaway, 3, cSW, cNW, processedEdges, processedCorners, t);
             }
 
             return output;
@@ -153,6 +146,7 @@ namespace Homepad.Home
             BuildOutput output,
             HomeLayout layout,
             RoomRecord room,
+            HomeLayout.CutawayView cutaway,
             int dir,
             Vector3 p0,
             Vector3 p1,
@@ -164,9 +158,8 @@ namespace Homepad.Home
             if (processedEdges.Contains(edgeKey)) return;
             processedEdges.Add(edgeKey);
 
-            float wallH = (dir == 2 || dir == 3) && layout.Cutaway ? LowWallHeight : HighWallHeight;
+            float wallH = GetWallHeight(layout, room, dir, cutaway);
 
-            // Check if there is a window or door in this wall side
             bool hasWindow = false;
             bool hasDoor = false;
             Vector2Int winCell = Vector2Int.zero;
@@ -177,21 +170,17 @@ namespace Homepad.Home
             {
                 Vector2Int cellPos = GetSideCellPos(room, dir, i);
                 var cell = layout.GetCell(cellPos);
-                if (cell != null)
-                {
-                    if (cell.Windows[dir]) { hasWindow = true; winCell = cellPos; }
-                    if (cell.Doors[dir]) { hasDoor = true; doorCell = cellPos; }
-                }
+                if (cell == null) continue;
+                if (cell.Windows[dir]) { hasWindow = true; winCell = cellPos; }
+                if (cell.Doors[dir]) { hasDoor = true; doorCell = cellPos; }
             }
 
-            // Room Corner Posts (Only at the real corners!)
             AddCornerPostIfNew(output.EdgeLines, processedCorners, p0, wallH);
             AddCornerPostIfNew(output.EdgeLines, processedCorners, p1, wallH);
 
-            // Exterior Plinth Skirt if boundary
             Vector2Int neighborCell = GetSideCellPos(room, dir, 0) + HomeLayout.DirVec[dir];
             var neighbor = layout.GetCell(neighborCell);
-            bool isExterior = (neighbor == null || !neighbor.HasFloor);
+            bool isExterior = neighbor == null || !neighbor.HasFloor;
             if (isExterior)
             {
                 AddPlinthSpan(output.PlinthData, output.EdgeLines, p0, p1, dir, FloorPlinthHeight);
@@ -207,9 +196,20 @@ namespace Homepad.Home
             }
             else
             {
-                // Single continuous wall span from p0 to p1 (No 4-way slicing!)
                 BuildContinuousWallSpan(output.TranslucentWalls, output.EdgeLines, p0, p1, dir, t, wallH);
             }
+        }
+
+        private static float GetWallHeight(HomeLayout layout, RoomRecord room, int dir, HomeLayout.CutawayView cutaway)
+        {
+            if (!layout.Cutaway) return HighWallHeight;
+
+            Vector2Int neighborCell = GetSideCellPos(room, dir, 0) + HomeLayout.DirVec[dir];
+            var neighbor = layout.GetCell(neighborCell);
+            bool interior = neighbor != null && neighbor.HasFloor;
+            if (interior) return InteriorWallHeight;
+
+            return cutaway.IsFront(dir) ? LowWallHeight : HighWallHeight;
         }
 
         private static void BuildContinuousWallSpan(MeshData transWalls, MeshData edges, Vector3 p0, Vector3 p1, int dir, float t, float h)
@@ -217,94 +217,53 @@ namespace Homepad.Home
             Vector3 mid = (p0 + p1) * 0.5f;
             float length = Vector3.Distance(p0, p1);
 
-            // 1. One Unified Glass Wall Panel
-            Vector3 wallSize = (dir == 0 || dir == 2)
-                ? new Vector3(length, h, t)
-                : new Vector3(t, h, length);
-            Vector3 wallCenter = new Vector3(mid.x, FloorPlinthHeight + h * 0.5f, mid.z);
-            transWalls.AddBox(wallCenter, wallSize);
-
-            // 2. Single Continuous Top Edge Line
-            Vector3 topRailSize = (dir == 0 || dir == 2)
-                ? new Vector3(length, LineThickness, LineThickness * 1.5f)
-                : new Vector3(LineThickness * 1.5f, LineThickness, length);
-            Vector3 topRailCenter = new Vector3(mid.x, FloorPlinthHeight + h, mid.z);
-            edges.AddBox(topRailCenter, topRailSize);
-
-            // 3. Single Continuous Baseboard Line
-            Vector3 baseRailSize = (dir == 0 || dir == 2)
-                ? new Vector3(length, LineThickness * 0.7f, LineThickness * 1.2f)
-                : new Vector3(LineThickness * 1.2f, LineThickness * 0.7f, length);
-            Vector3 baseRailCenter = new Vector3(mid.x, FloorPlinthHeight + LineThickness * 0.35f, mid.z);
-            edges.AddBox(baseRailCenter, baseRailSize);
+            AddOrientedBox(transWalls, mid, dir, length, h, t, FloorPlinthHeight);
+            AddOrientedBox(edges, mid, dir, length, LineThickness, LineThickness * 1.4f, FloorPlinthHeight + h - LineThickness * 0.5f);
+            AddOrientedBox(edges, mid, dir, length, LineThickness * 0.7f, LineThickness, FloorPlinthHeight);
         }
 
         private static void BuildDoorwayWallSpan(BuildOutput output, Vector3 p0, Vector3 p1, int dir, float t, float h, Vector2Int doorCell, HomeLayout layout)
         {
             Vector3 doorCenter = layout.CellCenter(doorCell, 0f);
-            float doorWidth = HomeLayout.CellSize * 1.0f;
+            float doorWidth = HomeLayout.CellSize * 0.7f;
             float totalLen = Vector3.Distance(p0, p1);
             Vector3 dirVec = (p1 - p0).normalized;
 
-            // Project door position on the span
             float doorDist = Vector3.Dot(doorCenter - p0, dirVec);
             float dStart = Mathf.Max(0f, doorDist - doorWidth * 0.5f);
             float dEnd = Mathf.Min(totalLen, doorDist + doorWidth * 0.5f);
 
-            // Left Wall Span
             if (dStart > 0.05f)
             {
-                Vector3 w0 = p0;
-                Vector3 w1 = p0 + dirVec * dStart;
-                BuildContinuousWallSpan(output.TranslucentWalls, output.EdgeLines, w0, w1, dir, t, h);
+                BuildContinuousWallSpan(output.TranslucentWalls, output.EdgeLines, p0, p0 + dirVec * dStart, dir, t, h);
             }
 
-            // Right Wall Span
             if (totalLen - dEnd > 0.05f)
             {
-                Vector3 w0 = p0 + dirVec * dEnd;
-                Vector3 w1 = p1;
-                BuildContinuousWallSpan(output.TranslucentWalls, output.EdgeLines, w0, w1, dir, t, h);
+                BuildContinuousWallSpan(output.TranslucentWalls, output.EdgeLines, p0 + dirVec * dEnd, p1, dir, t, h);
             }
 
-            // Door Portal Frame & Header
-            Vector3 dMid = p0 + dirVec * (doorDist);
-            float doorH = Mathf.Min(DoorLintelHeight, h);
+            Vector3 dMid = p0 + dirVec * doorDist;
+            float doorH = Mathf.Min(DoorLintelHeight, Mathf.Max(h, LowWallHeight));
             float postW = 0.06f;
 
-            // Door Posts
-            Vector3 post1 = p0 + dirVec * dStart;
-            post1.y = FloorPlinthHeight + doorH * 0.5f;
-            Vector3 post2 = p0 + dirVec * dEnd;
-            post2.y = FloorPlinthHeight + doorH * 0.5f;
+            AddOrientedBox(output.DoorFrames, p0 + dirVec * dStart, dir, postW, doorH, t * 1.15f, FloorPlinthHeight);
+            AddOrientedBox(output.DoorFrames, p0 + dirVec * dEnd, dir, postW, doorH, t * 1.15f, FloorPlinthHeight);
+            AddOrientedBox(output.DoorFrames, dMid, dir, doorWidth, 0.035f, t * 1.2f, 0f);
+            AddOrientedBox(output.DoorFrames, dMid, dir, doorWidth + postW * 2f, 0.05f, t * 1.15f, FloorPlinthHeight + doorH - 0.025f);
 
-            Vector3 postSize = (dir == 0 || dir == 2) ? new Vector3(postW, doorH, t * 1.15f) : new Vector3(t * 1.15f, doorH, postW);
-            output.DoorFrames.AddBox(post1, postSize);
-            output.DoorFrames.AddBox(post2, postSize);
-
-            // Door Lintel Beam
-            Vector3 lintelCenter = new Vector3(dMid.x, FloorPlinthHeight + doorH, dMid.z);
-            Vector3 lintelSize = (dir == 0 || dir == 2) ? new Vector3(doorWidth, LineThickness * 1.2f, t * 1.15f) : new Vector3(t * 1.15f, LineThickness * 1.2f, doorWidth);
-            output.DoorFrames.AddBox(lintelCenter, lintelSize);
-
-            // Top Wall above door
-            if (h > DoorLintelHeight)
+            if (h > doorH + 0.02f)
             {
-                float topH = h - DoorLintelHeight;
-                Vector3 topCenter = new Vector3(dMid.x, FloorPlinthHeight + DoorLintelHeight + topH * 0.5f, dMid.z);
-                Vector3 topSize = (dir == 0 || dir == 2) ? new Vector3(doorWidth, topH, t) : new Vector3(t, topH, doorWidth);
-                output.TranslucentWalls.AddBox(topCenter, topSize);
-
-                Vector3 topRailCenter = new Vector3(dMid.x, FloorPlinthHeight + h, dMid.z);
-                Vector3 topRailSize = (dir == 0 || dir == 2) ? new Vector3(doorWidth, LineThickness, LineThickness * 1.5f) : new Vector3(LineThickness * 1.5f, LineThickness, doorWidth);
-                output.EdgeLines.AddBox(topRailCenter, topRailSize);
+                float topH = h - doorH;
+                AddOrientedBox(output.TranslucentWalls, dMid, dir, doorWidth, topH, t, FloorPlinthHeight + doorH);
+                AddOrientedBox(output.EdgeLines, dMid, dir, doorWidth, LineThickness, LineThickness * 1.4f, FloorPlinthHeight + h - LineThickness * 0.5f);
             }
         }
 
         private static void BuildWindowedWallSpan(BuildOutput output, Vector3 p0, Vector3 p1, int dir, float t, float h, Vector2Int winCell, HomeLayout layout)
         {
             Vector3 winCenter = layout.CellCenter(winCell, 0f);
-            float winWidth = HomeLayout.CellSize * 1.8f; // Wide modern picture window
+            float winWidth = HomeLayout.CellSize * 1.15f;
             float totalLen = Vector3.Distance(p0, p1);
             Vector3 dirVec = (p1 - p0).normalized;
 
@@ -312,58 +271,40 @@ namespace Homepad.Home
             float wStart = Mathf.Max(0f, winDist - winWidth * 0.5f);
             float wEnd = Mathf.Min(totalLen, winDist + winWidth * 0.5f);
 
-            // Left Wall
             if (wStart > 0.05f)
             {
                 BuildContinuousWallSpan(output.TranslucentWalls, output.EdgeLines, p0, p0 + dirVec * wStart, dir, t, h);
             }
 
-            // Right Wall
             if (totalLen - wEnd > 0.05f)
             {
                 BuildContinuousWallSpan(output.TranslucentWalls, output.EdgeLines, p0 + dirVec * wEnd, p1, dir, t, h);
             }
 
-            // Center Window Section
             Vector3 wMid = p0 + dirVec * winDist;
-            float sillH = Mathf.Min(WindowSillHeight, h * 0.8f);
+            float openingTop = h > WindowLintelHeight ? WindowLintelHeight : Mathf.Max(h, LowWallHeight + 0.28f);
+            float sillH = Mathf.Min(WindowSillHeight, openingTop * 0.45f);
+            if (sillH < 0.08f) sillH = Mathf.Min(0.12f, h * 0.35f);
 
-            // Window Sill Wall
             if (sillH > 0.05f)
             {
-                Vector3 sillSize = (dir == 0 || dir == 2) ? new Vector3(winWidth, sillH, t) : new Vector3(t, sillH, winWidth);
-                Vector3 sillCenter = new Vector3(wMid.x, FloorPlinthHeight + sillH * 0.5f, wMid.z);
-                output.TranslucentWalls.AddBox(sillCenter, sillSize);
-
-                Vector3 sillRailSize = (dir == 0 || dir == 2) ? new Vector3(winWidth, LineThickness, LineThickness * 1.4f) : new Vector3(LineThickness * 1.4f, LineThickness, winWidth);
-                Vector3 sillRailCenter = new Vector3(wMid.x, FloorPlinthHeight + sillH, wMid.z);
-                output.EdgeLines.AddBox(sillRailCenter, sillRailSize);
+                AddOrientedBox(output.TranslucentWalls, wMid, dir, winWidth, sillH, t, FloorPlinthHeight);
+                AddOrientedBox(output.EdgeLines, wMid, dir, winWidth, LineThickness, LineThickness * 1.3f, FloorPlinthHeight + sillH - LineThickness * 0.5f);
             }
 
-            // Window Top Wall
-            if (h > WindowLintelHeight)
+            if (h > openingTop + 0.02f)
             {
-                float topH = h - WindowLintelHeight;
-                Vector3 topSize = (dir == 0 || dir == 2) ? new Vector3(winWidth, topH, t) : new Vector3(t, topH, winWidth);
-                Vector3 topCenter = new Vector3(wMid.x, FloorPlinthHeight + WindowLintelHeight + topH * 0.5f, wMid.z);
-                output.TranslucentWalls.AddBox(topCenter, topSize);
-
-                Vector3 topRailSize = (dir == 0 || dir == 2) ? new Vector3(winWidth, LineThickness, LineThickness * 1.5f) : new Vector3(LineThickness * 1.5f, LineThickness, winWidth);
-                Vector3 topRailCenter = new Vector3(wMid.x, FloorPlinthHeight + h, wMid.z);
-                output.EdgeLines.AddBox(topRailCenter, topRailSize);
+                float topH = h - openingTop;
+                AddOrientedBox(output.TranslucentWalls, wMid, dir, winWidth, topH, t, FloorPlinthHeight + openingTop);
+                AddOrientedBox(output.EdgeLines, wMid, dir, winWidth, LineThickness, LineThickness * 1.4f, FloorPlinthHeight + h - LineThickness * 0.5f);
             }
 
-            // Window Frame & Glass
             float glassBottom = FloorPlinthHeight + sillH;
-            float glassTop = FloorPlinthHeight + (h > WindowLintelHeight ? WindowLintelHeight : h + 0.3f);
-            float glassH = Mathf.Max(0.2f, glassTop - glassBottom);
-            Vector3 glassCenter = new Vector3(wMid.x, glassBottom + glassH * 0.5f, wMid.z);
-
-            Vector3 glassSize = (dir == 0 || dir == 2) ? new Vector3(winWidth * 0.96f, glassH, 0.015f) : new Vector3(0.015f, glassH, winWidth * 0.96f);
-            output.WindowGlass.AddBox(glassCenter, glassSize);
-
-            Vector3 frameSize = (dir == 0 || dir == 2) ? new Vector3(winWidth * 0.98f, glassH + 0.03f, t * 1.05f) : new Vector3(t * 1.05f, glassH + 0.03f, winWidth * 0.98f);
-            output.WindowFrames.AddBox(glassCenter, frameSize);
+            float glassTop = FloorPlinthHeight + openingTop;
+            float glassH = Mathf.Max(0.18f, glassTop - glassBottom);
+            float openingW = Mathf.Max(0.35f, winWidth * 0.78f);
+            AddOrientedBox(output.WindowGlass, wMid, dir, openingW, glassH, 0.016f, glassBottom);
+            AddHollowFrame(output.WindowFrames, wMid, dirVec, dir, winWidth, t * 1.12f, glassBottom, glassBottom + glassH);
         }
 
         private static void AddCornerPostIfNew(MeshData edges, HashSet<string> visited, Vector3 cornerPos, float height)
@@ -373,8 +314,7 @@ namespace Homepad.Home
             visited.Add(key);
 
             Vector3 center = new Vector3(cornerPos.x, FloorPlinthHeight + height * 0.5f, cornerPos.z);
-            Vector3 size = new Vector3(PostThickness, height, PostThickness);
-            edges.AddBox(center, size);
+            edges.AddBox(center, new Vector3(PostThickness, height, PostThickness));
         }
 
         private static void AddPlinthSpan(MeshData plinth, MeshData edges, Vector3 p0, Vector3 p1, int dir, float height)
@@ -393,19 +333,40 @@ namespace Homepad.Home
             Vector3 pos = new Vector3(mid.x, height * 0.5f, mid.z) + norm * 0.012f;
             plinth.AddBox(pos, size);
 
-            Vector3 lineSize = (dir == 0 || dir == 2) ? new Vector3(length, 0.015f, 0.035f) : new Vector3(0.035f, 0.015f, length);
+            Vector3 lineSize = (dir == 0 || dir == 2) ? new Vector3(length, 0.012f, 0.028f) : new Vector3(0.028f, 0.012f, length);
             Vector3 linePos = new Vector3(mid.x, height, mid.z) + norm * 0.012f;
             edges.AddBox(linePos, lineSize);
+        }
+
+        private static void AddHollowFrame(MeshData frames, Vector3 mid, Vector3 side, int dir, float length, float thickness, float y0, float y1)
+        {
+            float h = Mathf.Max(0.12f, y1 - y0);
+            float openingW = Mathf.Max(0.3f, length * 0.78f);
+            float stile = Mathf.Max(0.04f, (length - openingW) * 0.5f);
+            float rail = 0.04f;
+            AddOrientedBox(frames, mid - side * ((openingW + stile) * 0.5f), dir, stile, h, thickness, y0);
+            AddOrientedBox(frames, mid + side * ((openingW + stile) * 0.5f), dir, stile, h, thickness, y0);
+            AddOrientedBox(frames, mid, dir, openingW, rail, thickness, y0);
+            AddOrientedBox(frames, mid, dir, openingW, rail, thickness, y1 - rail);
+        }
+
+        private static void AddOrientedBox(MeshData data, Vector3 mid, int dir, float length, float height, float thickness, float yBottom)
+        {
+            Vector3 size = (dir == 0 || dir == 2)
+                ? new Vector3(length, height, thickness)
+                : new Vector3(thickness, height, length);
+            Vector3 center = new Vector3(mid.x, yBottom + height * 0.5f, mid.z);
+            data.AddBox(center, size);
         }
 
         private static Vector2Int GetSideCellPos(RoomRecord room, int dir, int index)
         {
             return dir switch
             {
-                0 => new Vector2Int(room.Origin.x + index, room.Origin.y + room.Size.y - 1), // North
-                1 => new Vector2Int(room.Origin.x + room.Size.x - 1, room.Origin.y + (room.Size.y - 1 - index)), // East
-                2 => new Vector2Int(room.Origin.x + (room.Size.x - 1 - index), room.Origin.y), // South
-                _ => new Vector2Int(room.Origin.x, room.Origin.y + index) // West
+                0 => new Vector2Int(room.Origin.x + index, room.Origin.y + room.Size.y - 1),
+                1 => new Vector2Int(room.Origin.x + room.Size.x - 1, room.Origin.y + (room.Size.y - 1 - index)),
+                2 => new Vector2Int(room.Origin.x + (room.Size.x - 1 - index), room.Origin.y),
+                _ => new Vector2Int(room.Origin.x, room.Origin.y + index)
             };
         }
 
@@ -418,8 +379,7 @@ namespace Homepad.Home
 
             if (x0 < x1 || (x0 == x1 && z0 < z1))
                 return $"{x0},{z0}_{x1},{z1}";
-            else
-                return $"{x1},{z1}_{x0},{z0}";
+            return $"{x1},{z1}_{x0},{z0}";
         }
     }
 }

@@ -13,6 +13,7 @@ namespace Homepad.Home
             public Light roomLight;
             public Light heaterLight;
             public MeshRenderer lampRenderer;
+            public RoomLightRig lightRig;
             public HeaterGlow heaterGlow;
             public CurtainCloth curtainCloth;
             public Transform ceilingAnchor;
@@ -59,6 +60,12 @@ namespace Homepad.Home
         public void SetLight(RoomHint hint, bool on)
         {
             if (!fixtureMap.TryGetValue(hint, out var f)) return;
+            if (f.lightRig != null)
+            {
+                f.lightRig.SetLit(on);
+                return;
+            }
+
             if (f.roomLight != null)
             {
                 f.roomLight.enabled = on;
@@ -113,6 +120,7 @@ namespace Homepad.Home
             if (src.roomLight != null) dest.roomLight = src.roomLight;
             if (src.heaterLight != null) dest.heaterLight = src.heaterLight;
             if (src.lampRenderer != null) dest.lampRenderer = src.lampRenderer;
+            if (src.lightRig != null) dest.lightRig = src.lightRig;
             if (src.heaterGlow != null) dest.heaterGlow = src.heaterGlow;
             if (src.curtainCloth != null) dest.curtainCloth = src.curtainCloth;
             if (src.ceilingAnchor != null) dest.ceilingAnchor = src.ceilingAnchor;

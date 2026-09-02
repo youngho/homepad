@@ -31,7 +31,11 @@ namespace Homepad.UI
             new Color(0.55f, 0.62f, 0.78f), 0.38f,
             new Color(0.35f, 0.42f, 0.62f), 0.10f,
             new Color(0.05f, 0.055f, 0.07f),
-            new Color(0.08f, 0.10f, 0.18f, 0.04f));
+            new Color(0.08f, 0.10f, 0.18f, 0.04f),
+            new Color(0.42f, 0.50f, 0.62f, 0.14f),
+            new Color(0.92f, 0.86f, 0.74f),
+            new Color(0.70f, 0.52f, 0.28f) * 0.85f,
+            new Color(0.48f, 0.40f, 0.30f));
 
         private static readonly Look Dawn = new Look(
             new Color(0.28f, 0.34f, 0.48f),
@@ -39,7 +43,11 @@ namespace Homepad.UI
             new Color(1.00f, 0.78f, 0.62f), 0.85f,
             new Color(0.55f, 0.62f, 0.88f), 0.28f,
             new Color(0.16f, 0.18f, 0.24f),
-            new Color(0.45f, 0.42f, 0.70f, 0.12f));
+            new Color(0.45f, 0.42f, 0.70f, 0.12f),
+            new Color(0.90f, 0.82f, 0.78f, 0.26f),
+            new Color(0.88f, 0.72f, 0.58f),
+            new Color(0.55f, 0.32f, 0.18f) * 0.35f,
+            new Color(0.62f, 0.48f, 0.36f));
 
         private static readonly Look Day = new Look(
             new Color(0.62f, 0.72f, 0.82f),
@@ -47,7 +55,11 @@ namespace Homepad.UI
             new Color(1.00f, 0.97f, 0.92f), 1.25f,
             new Color(0.78f, 0.86f, 1.00f), 0.42f,
             new Color(0.18f, 0.20f, 0.23f),
-            new Color(0.85f, 0.92f, 1.00f, 0.08f));
+            new Color(0.85f, 0.92f, 1.00f, 0.08f),
+            new Color(0.96f, 0.93f, 0.88f, 0.32f),
+            new Color(0.82f, 0.76f, 0.68f),
+            new Color(0.08f, 0.07f, 0.05f),
+            new Color(0.72f, 0.54f, 0.38f));
 
         private static readonly Look Dusk = new Look(
             new Color(0.32f, 0.16f, 0.14f),
@@ -55,7 +67,11 @@ namespace Homepad.UI
             new Color(1.00f, 0.52f, 0.28f), 0.95f,
             new Color(0.45f, 0.28f, 0.55f), 0.22f,
             new Color(0.14f, 0.08f, 0.07f),
-            new Color(0.90f, 0.35f, 0.18f, 0.14f));
+            new Color(0.90f, 0.35f, 0.18f, 0.14f),
+            new Color(0.72f, 0.48f, 0.38f, 0.22f),
+            new Color(0.90f, 0.62f, 0.40f),
+            new Color(0.85f, 0.38f, 0.12f) * 0.7f,
+            new Color(0.58f, 0.38f, 0.26f));
 
         private Keyframe[] keys;
         private int lastCalculatedDay = -1;
@@ -186,7 +202,9 @@ namespace Homepad.UI
             var builder = HomeController.Instance != null
                 ? HomeController.Instance.GetComponent<IsometricHomeBuilder>()
                 : FindFirstObjectByType<IsometricHomeBuilder>();
-            builder?.SetGroundColor(look.ground);
+            if (builder == null) return;
+            builder.SetGroundColor(look.ground);
+            builder.SetShellLook(look.wall, look.edge, look.edgeEmission, look.frame);
         }
 
         private static float Smooth(float t)
@@ -217,9 +235,14 @@ namespace Homepad.UI
             public readonly float fillIntensity;
             public readonly Color ground;
             public readonly Color wash;
+            public readonly Color wall;
+            public readonly Color edge;
+            public readonly Color edgeEmission;
+            public readonly Color frame;
 
             public Look(Color voidColor, Color chrome, Color keyColor, float keyIntensity,
-                Color fillColor, float fillIntensity, Color ground, Color wash)
+                Color fillColor, float fillIntensity, Color ground, Color wash,
+                Color wall, Color edge, Color edgeEmission, Color frame)
             {
                 this.voidColor = voidColor;
                 this.chrome = chrome;
@@ -229,6 +252,10 @@ namespace Homepad.UI
                 this.fillIntensity = fillIntensity;
                 this.ground = ground;
                 this.wash = wash;
+                this.wall = wall;
+                this.edge = edge;
+                this.edgeEmission = edgeEmission;
+                this.frame = frame;
             }
 
             public static Look Lerp(Look a, Look b, float t)
@@ -241,7 +268,11 @@ namespace Homepad.UI
                     Color.Lerp(a.fillColor, b.fillColor, t),
                     Mathf.Lerp(a.fillIntensity, b.fillIntensity, t),
                     Color.Lerp(a.ground, b.ground, t),
-                    Color.Lerp(a.wash, b.wash, t));
+                    Color.Lerp(a.wash, b.wash, t),
+                    Color.Lerp(a.wall, b.wall, t),
+                    Color.Lerp(a.edge, b.edge, t),
+                    Color.Lerp(a.edgeEmission, b.edgeEmission, t),
+                    Color.Lerp(a.frame, b.frame, t));
             }
         }
     }
