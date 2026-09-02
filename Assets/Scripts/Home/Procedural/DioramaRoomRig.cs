@@ -12,10 +12,11 @@ namespace Homepad.Home
             public RoomHint hint;
             public Light roomLight;
             public Light heaterLight;
+            public HeaterGlow heaterGlow;
             public MeshRenderer lampRenderer;
             public RoomLightRig lightRig;
-            public HeaterGlow heaterGlow;
             public CurtainCloth curtainCloth;
+            public ProceduralCurtain3D curtain3D;
             public Transform ceilingAnchor;
             public Transform wallAnchor;
             public Transform floorAnchor;
@@ -89,6 +90,7 @@ namespace Homepad.Home
         public void SetCurtain(RoomHint hint, float open)
         {
             if (!fixtureMap.TryGetValue(hint, out var f)) return;
+            if (f.curtain3D != null) f.curtain3D.SetOpen(open);
             if (f.curtainCloth != null) f.curtainCloth.SetOpen(open);
         }
 
@@ -123,6 +125,7 @@ namespace Homepad.Home
             if (src.lightRig != null) dest.lightRig = src.lightRig;
             if (src.heaterGlow != null) dest.heaterGlow = src.heaterGlow;
             if (src.curtainCloth != null) dest.curtainCloth = src.curtainCloth;
+            if (src.curtain3D != null) dest.curtain3D = src.curtain3D;
             if (src.ceilingAnchor != null) dest.ceilingAnchor = src.ceilingAnchor;
             if (src.wallAnchor != null) dest.wallAnchor = src.wallAnchor;
             if (src.floorAnchor != null) dest.floorAnchor = src.floorAnchor;

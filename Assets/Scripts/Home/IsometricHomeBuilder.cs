@@ -27,6 +27,7 @@ namespace Homepad.Home
         private Material plinthMat;
         private Material groundMat;
         private Material ghostMat;
+        private Material curtainMat;
 
         private readonly Dictionary<RoomHint, Material> roomFloors = new Dictionary<RoomHint, Material>();
         private DioramaRoomRig dioramaRig;
@@ -326,24 +327,22 @@ namespace Homepad.Home
 
         private Transform SpawnCurtain(Transform parent, PlacedItem item)
         {
-            parent.position = layout.WallCenter(item.Cell, item.WallDir, 1.2f);
+            parent.position = layout.WallCenter(item.Cell, item.WallDir, 1.05f);
             parent.rotation = Quaternion.LookRotation(-HomeLayout.DirNormal(item.WallDir));
 
-            var inst = SpawnKit(curtainPrefab, parent, "Curtain");
-            var cloth = inst.GetComponentInChildren<CurtainCloth>(true);
-            if (cloth != null)
-            {
-                cloth.Initialize();
-                cloth.SetOpen(item.CurtainOpen);
-            }
+            var go = new GameObject("Curtain3D");
+            go.transform.SetParent(parent, false);
+            var curtain3D = go.AddComponent<ProceduralCurtain3D>();
+            curtain3D.Initialize(curtainMat, doorFrameMat);
+            curtain3D.SetOpen(item.CurtainOpen);
 
             dioramaRig?.RegisterFixture(new DioramaRoomRig.RoomFixture
             {
                 hint = item.RoomHint,
-                curtainCloth = cloth,
+                curtain3D = curtain3D,
                 wallAnchor = parent
             });
-            return inst.transform;
+            return go.transform;
         }
 
         private static GameObject SpawnKit(GameObject prefab, Transform parent, string fallbackName)
@@ -429,6 +428,7 @@ namespace Homepad.Home
             plinthMat = CreateMat("Mat_Plinth", litShader, new Color(0.24f, 0.26f, 0.30f), 0.30f);
             groundMat = CreateMat("Mat_Ground", litShader, new Color(0.08f, 0.09f, 0.12f), 0.15f);
             ghostMat = CreateMat("Mat_Ghost", litShader, new Color(0.35f, 0.75f, 1f, 0.45f), 0.5f);
+            curtainMat = CreateMat("Mat_Curtain_Fabric", litShader, new Color(0.94f, 0.92f, 0.88f), 0.35f);
 
             glassMat = CreateMat("Mat_Window_Glass", litShader, new Color(0.65f, 0.82f, 0.95f, 0.28f), 0.92f);
             MakeTransparent(glassMat, 20);
