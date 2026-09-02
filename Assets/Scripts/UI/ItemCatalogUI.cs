@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Homepad.Home;
 using UnityEngine;
 using UnityEngine.UI;
@@ -57,6 +58,41 @@ namespace Homepad.UI
             var home = HomeController.EnsureExists();
             if (home == null) return;
             home.PlaceFromCatalog(HomeItemDef.Catalog[index]);
+        }
+
+        /// <summary>
+        /// Rule-based addition of a device kind to a specified room.
+        /// </summary>
+        public bool AddDevice(HomeItemKind kind, RoomHint room)
+        {
+            var home = HomeController.EnsureExists();
+            if (home == null) return false;
+
+            var def = HomeItemDef.Create(kind, room);
+            return home.PlaceFromCatalog(def);
+        }
+
+        /// <summary>
+        /// Query allowed rooms for a given device kind and check if each is currently available or blocked.
+        /// </summary>
+        public List<(RoomHint room, string roomName, bool isAvailable)> GetRoomAvailability(HomeItemKind kind)
+        {
+            var result = new List<(RoomHint, string, bool)>();
+            if (!HomeItemDef.CategoryRules.TryGetValue(kind, out var rule))
+                return result;
+
+            var home = HomeController.Instance;
+            var layout = home != null ? home.Layout : null;
+
+            for (int i = 0; i < rule.DefaultAllowedRooms.Length; i++)
+            {
+                var room = rule.DefaultAllowedRooms[i];
+                var def = HomeItemDef.Create(kind, room);
+                bool blocked = layout != null && layout.IsCatalogBlocked(def);
+                result.Add((room, HomeItemDef.RoomName(room), !blocked));
+            }
+
+            return result;
         }
 
         public void Refresh()
