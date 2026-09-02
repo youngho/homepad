@@ -158,7 +158,10 @@ namespace Homepad.Home
             if (processedEdges.Contains(edgeKey)) return;
             processedEdges.Add(edgeKey);
 
-            float wallH = GetWallHeight(layout, room, dir, cutaway);
+            Vector2Int neighborCell = GetSideCellPos(room, dir, 0) + HomeLayout.DirVec[dir];
+            var neighbor = layout.GetCell(neighborCell);
+            bool isExterior = neighbor == null || !neighbor.HasFloor;
+            bool isFront = isExterior && layout.Cutaway && cutaway.IsFront(dir);
 
             bool hasWindow = false;
             bool hasDoor = false;
@@ -175,12 +178,9 @@ namespace Homepad.Home
                 if (cell.Doors[dir]) { hasDoor = true; doorCell = cellPos; }
             }
 
-            AddCornerPostIfNew(output.EdgeLines, processedCorners, p0, wallH);
-            AddCornerPostIfNew(output.EdgeLines, processedCorners, p1, wallH);
+            float wallH = HighWallHeight;
 
-            Vector2Int neighborCell = GetSideCellPos(room, dir, 0) + HomeLayout.DirVec[dir];
-            var neighbor = layout.GetCell(neighborCell);
-            bool isExterior = neighbor == null || !neighbor.HasFloor;
+            // Exterior boundary plinth line
             if (isExterior)
             {
                 AddPlinthSpan(output.PlinthData, output.EdgeLines, p0, p1, dir, FloorPlinthHeight);
@@ -188,28 +188,26 @@ namespace Homepad.Home
 
             if (hasWindow)
             {
+                AddCornerPostIfNew(output.EdgeLines, processedCorners, p0, wallH);
+                AddCornerPostIfNew(output.EdgeLines, processedCorners, p1, wallH);
                 BuildWindowedWallSpan(output, p0, p1, dir, t, wallH, winCell, layout);
             }
             else if (hasDoor)
             {
+                AddCornerPostIfNew(output.EdgeLines, processedCorners, p0, wallH);
+                AddCornerPostIfNew(output.EdgeLines, processedCorners, p1, wallH);
                 BuildDoorwayWallSpan(output, p0, p1, dir, t, wallH, doorCell, layout);
+            }
+            else if (isFront)
+            {
+                // Front solid wall: open/invisible in cutaway (floor plinth line defines boundary)
             }
             else
             {
+                AddCornerPostIfNew(output.EdgeLines, processedCorners, p0, wallH);
+                AddCornerPostIfNew(output.EdgeLines, processedCorners, p1, wallH);
                 BuildContinuousWallSpan(output.TranslucentWalls, output.EdgeLines, p0, p1, dir, t, wallH);
             }
-        }
-
-        private static float GetWallHeight(HomeLayout layout, RoomRecord room, int dir, HomeLayout.CutawayView cutaway)
-        {
-            if (!layout.Cutaway) return HighWallHeight;
-
-            Vector2Int neighborCell = GetSideCellPos(room, dir, 0) + HomeLayout.DirVec[dir];
-            var neighbor = layout.GetCell(neighborCell);
-            bool interior = neighbor != null && neighbor.HasFloor;
-            if (interior) return InteriorWallHeight;
-
-            return cutaway.IsFront(dir) ? LowWallHeight : HighWallHeight;
         }
 
         private static void BuildContinuousWallSpan(MeshData transWalls, MeshData edges, Vector3 p0, Vector3 p1, int dir, float t, float h)
