@@ -10,7 +10,7 @@ namespace Homepad.Home
     [DefaultExecutionOrder(-50)]
     public class HomeController : MonoBehaviour
     {
-        public const string SaveKey = "Homepad.MyHome.v1";
+        public const string SaveKey = "Homepad.MyHome.v2";
 
         public static HomeController Instance { get; private set; }
 
@@ -71,6 +71,11 @@ namespace Homepad.Home
             LoadOrEmpty();
             builder.Rebuild();
             FrameCamera();
+        }
+
+        private void Start()
+        {
+            builder?.RefreshItemStates();
         }
 
         private void OnEnable()
@@ -399,26 +404,21 @@ namespace Homepad.Home
             var cam = Camera.main;
             if (cam == null) return;
             cam.orthographic = true;
-            cam.orthographicSize = 8f;
+            cam.orthographicSize = 7.5f;
             cam.nearClipPlane = 0.1f;
-            cam.farClipPlane = 80f;
+            cam.farClipPlane = 100f;
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0.11f, 0.14f, 0.18f);
+            cam.backgroundColor = new Color(0.08f, 0.09f, 0.12f, 1f);
             cam.transform.rotation = Quaternion.Euler(35.264f, 45f, 0f);
-            cam.transform.position = new Vector3(-12f, 14f, -12f);
+            cam.transform.position = new Vector3(-13.5f, 14.5f, -13.5f);
         }
 
         public void FrameCamera()
         {
             var cam = Camera.main;
             if (cam == null) return;
-            Vector3 center = Vector3.zero;
-            float size = 8f;
-            if (layout != null && layout.TryGetBounds(out var bounds))
-            {
-                center = bounds.center;
-                size = Mathf.Clamp(Mathf.Max(bounds.size.x, bounds.size.z) * 0.62f + 3.5f, 6f, 18f);
-            }
+            Vector3 center = new Vector3(0f, 0.5f, 0f);
+            float size = 7.5f;
 
             cam.orthographic = true;
             cam.orthographicSize = size;
@@ -428,19 +428,51 @@ namespace Homepad.Home
 
         private void LoadOrEmpty()
         {
-            if (!PlayerPrefs.HasKey(SaveKey)) return;
-            string json = PlayerPrefs.GetString(SaveKey, string.Empty);
-            if (string.IsNullOrEmpty(json)) return;
-            try
+            if (PlayerPrefs.HasKey(SaveKey))
             {
-                var data = JsonUtility.FromJson<HomeSaveData>(json);
-                if (data == null) return;
-                ApplySave(data);
+                string json = PlayerPrefs.GetString(SaveKey, string.Empty);
+                if (!string.IsNullOrEmpty(json))
+                {
+                    try
+                    {
+                        var data = JsonUtility.FromJson<HomeSaveData>(json);
+                        if (data != null && (data.rooms.Count > 0 || data.items.Count > 0))
+                        {
+                            ApplySave(data);
+                            return;
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // ignore corrupt save
+                    }
+                }
             }
-            catch (Exception)
-            {
-                // ignore corrupt save
-            }
+
+            // Default Setup: populate all rooms and items for modern apartment
+            PopulateDefaultHome();
+        }
+
+        public void PopulateDefaultHome()
+        {
+            layout.Rooms.Clear();
+            layout.Items.Clear();
+
+            service.EnsureRoom(RoomHint.Living);
+            service.EnsureRoom(RoomHint.Master);
+            service.EnsureRoom(RoomHint.Bedroom);
+            service.EnsureRoom(RoomHint.Bedroom2);
+            service.EnsureRoom(RoomHint.Kitchen);
+
+            // Default: Living Room Light, Living Room Heat, Electric Curtain
+            var lightDef = HomeItemDef.Find("light_living");
+            if (lightDef != null) PlaceFromCatalog(lightDef);
+
+            var heatDef = HomeItemDef.Find("heat_living");
+            if (heatDef != null) PlaceFromCatalog(heatDef);
+
+            var curtainDef = HomeItemDef.Find("curtain");
+            if (curtainDef != null) PlaceFromCatalog(curtainDef);
         }
 
         private void ApplySave(HomeSaveData data)

@@ -14,7 +14,8 @@ namespace Homepad.Home
         private readonly Dictionary<string, HomeItemView> views = new Dictionary<string, HomeItemView>();
         private readonly List<Material> materials = new List<Material>();
 
-        [SerializeField] private GameObject livingRoomPrefab;
+        [Header("Apartment Kit")]
+        [SerializeField] private GameObject modernApartmentPrefab;
         [SerializeField] private GameObject ceilingLampPrefab;
         [SerializeField] private GameObject wallHeaterPrefab;
         [SerializeField] private GameObject curtainPrefab;
@@ -27,13 +28,21 @@ namespace Homepad.Home
         private Material groundMat;
         private Material ghostMat;
         private readonly Dictionary<RoomHint, Material> roomFloors = new Dictionary<RoomHint, Material>();
-        private RoomLightRig livingRig;
+        private ApartmentLightRig apartmentRig;
 
         public IReadOnlyDictionary<string, HomeItemView> Views => views;
+        public ApartmentLightRig ApartmentRig => apartmentRig;
 
         public void Initialize(HomeLayout homeLayout)
         {
             layout = homeLayout;
+#if UNITY_EDITOR
+            if (modernApartmentPrefab == null)
+            {
+                modernApartmentPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/ModernApartment.prefab");
+            }
+#endif
+
             EnsureMaterials();
             if (geometryRoot == null)
             {
@@ -79,6 +88,31 @@ namespace Homepad.Home
         public void RefreshItemStates()
         {
             var manager = WallpadManager.Instance;
+            if (apartmentRig != null && manager != null)
+            {
+                // Update Apartment Dynamic Lighting & Heating
+                for (int i = 0; i < layout.Items.Count; i++)
+                {
+                    var item = layout.Items[i];
+                    if (item.Kind == HomeItemKind.Light)
+                    {
+                        var light = FindLight(manager, item.DeviceId);
+                        bool on = light != null && light.isOn;
+                        apartmentRig.SetLight(item.RoomHint, on);
+                    }
+                    else if (item.Kind == HomeItemKind.Heating)
+                    {
+                        var heat = FindHeat(manager, item.DeviceId);
+                        bool on = heat != null && heat.isPowered && !heat.isAwayMode;
+                        apartmentRig.SetHeating(item.RoomHint, on);
+                    }
+                    else if (item.Kind == HomeItemKind.ElectricCurtain)
+                    {
+                        apartmentRig.SetCurtain(item.CurtainOpen);
+                    }
+                }
+            }
+
             foreach (var pair in views)
             {
                 ApplyItemState(pair.Value, manager);
@@ -100,29 +134,21 @@ namespace Homepad.Home
 
             ghostRoot.gameObject.SetActive(true);
             var t = ghostRoot.GetChild(0);
-            Color c = valid ? new Color(0.35f, 0.75f, 1f, 0.4f) : new Color(1f, 0.3f, 0.3f, 0.35f);
+            Color c = valid ? new Color(0.35f, 0.75f, 1f, 0.45f) : new Color(1f, 0.3f, 0.3f, 0.35f);
             SetMatColor(ghostMat, c);
 
-            if (def.Surface == Surface.Ceiling)
+            if (apartmentRig != null)
             {
-                t.position = layout.CellCenter(cell, HomeLayout.WallHeight - 0.25f);
-                t.localScale = new Vector3(0.55f, 0.2f, 0.55f);
-                t.rotation = Quaternion.identity;
-            }
-            else if (def.Surface == Surface.Floor)
-            {
-                t.position = layout.CellCenter(cell, 0.45f);
-                t.localScale = new Vector3(0.7f, 0.9f, 0.7f);
-                t.rotation = Quaternion.identity;
+                var anchor = apartmentRig.GetAnchor(def.Kind, def.RoomHint);
+                t.position = anchor != null ? anchor.position : Vector3.zero;
             }
             else
             {
-                t.position = layout.WallCenter(cell, wallDir, 1.2f);
-                t.rotation = Quaternion.LookRotation(new Vector3(HomeLayout.DirVec[wallDir].x, 0f, HomeLayout.DirVec[wallDir].y));
-                t.localScale = def.Kind == HomeItemKind.ElectricCurtain
-                    ? new Vector3(HomeLayout.CellSize * 0.85f, 1.4f, 0.08f)
-                    : new Vector3(0.35f, 0.5f, 0.12f);
+                t.position = layout != null ? layout.CellCenter(cell, 1.0f) : Vector3.zero;
             }
+
+            t.localScale = new Vector3(0.5f, 0.5f, 0.5f);
+            t.rotation = Quaternion.identity;
         }
 
         public void HideGhost()
@@ -134,31 +160,29 @@ namespace Homepad.Home
         {
             float size = 48f;
             var mesh = CreateQuadMesh(
-                new Vector3(-size, -0.02f, -size),
-                new Vector3(size, -0.02f, -size),
-                new Vector3(size, -0.02f, size),
-                new Vector3(-size, -0.02f, size),
+                new Vector3(-size, -0.05f, -size),
+                new Vector3(size, -0.05f, -size),
+                new Vector3(size, -0.05f, size),
+                new Vector3(-size, -0.05f, size),
                 Vector3.up);
             CreateMeshObject("Ground", geometryRoot, mesh, groundMat, false);
         }
 
         private void BuildRooms()
         {
-            livingRig = null;
-            var living = layout.FindRoom(RoomHint.Living);
-            bool kitLiving = living != null && livingRoomPrefab != null;
-            if (kitLiving)
+            apartmentRig = null;
+
+            if (modernApartmentPrefab != null)
             {
-                var roomGo = Object.Instantiate(livingRoomPrefab, geometryRoot);
-                roomGo.name = "LivingRoom";
-                roomGo.transform.position = new Vector3(
-                    living.Origin.x * HomeLayout.CellSize,
-                    0f,
-                    living.Origin.y * HomeLayout.CellSize);
-                livingRig = roomGo.GetComponent<RoomLightRig>();
-                livingRig?.SetLit(false);
+                var aptGo = Object.Instantiate(modernApartmentPrefab, geometryRoot);
+                aptGo.name = "ModernApartment";
+                aptGo.transform.localPosition = Vector3.zero;
+                aptGo.transform.localRotation = Quaternion.identity;
+                apartmentRig = aptGo.GetComponent<ApartmentLightRig>();
+                return;
             }
 
+            // Fallback: procedural boxes if modernApartmentPrefab is missing
             var floors = new Dictionary<RoomHint, MeshAccum>();
             var walls = new MeshAccum();
             var doors = new MeshAccum();
@@ -170,7 +194,6 @@ namespace Homepad.Home
                 var cell = pair.Value;
                 if (!cell.HasFloor) continue;
                 var room = layout.FindRoomById(cell.RoomId);
-                if (kitLiving && room != null && room.Hint == RoomHint.Living) continue;
                 var hint = room != null ? room.Hint : RoomHint.Living;
                 if (!floors.TryGetValue(hint, out var floorAccum))
                 {
@@ -179,28 +202,13 @@ namespace Homepad.Home
                 }
 
                 AddFloor(floorAccum, pair.Key);
-                if (!layout.Cutaway)
-                {
-                    AddCeiling(ceilings, pair.Key);
-                }
+                if (!layout.Cutaway) AddCeiling(ceilings, pair.Key);
 
                 for (int d = 0; d < 4; d++)
                 {
-                    if (cell.Windows[d])
-                    {
-                        AddWindow(glass, walls, pair.Key, d);
-                        continue;
-                    }
-
-                    if (layout.Cutaway && IsNearWall(d)) continue;
-                    if (cell.Doors[d])
-                    {
-                        AddDoorFrame(doors, pair.Key, d);
-                    }
-                    else if (cell.Walls[d])
-                    {
-                        AddWall(walls, pair.Key, d, 0f, HomeLayout.WallHeight);
-                    }
+                    if (cell.Windows[d]) AddWindow(glass, walls, pair.Key, d);
+                    else if (cell.Doors[d]) AddDoorFrame(doors, pair.Key, d);
+                    else if (cell.Walls[d]) AddWall(walls, pair.Key, d, 0f, HomeLayout.WallHeight);
                 }
             }
 
@@ -215,10 +223,6 @@ namespace Homepad.Home
             CreateMeshObject("Walls", geometryRoot, walls.ToMesh(), wallMat, false);
             CreateMeshObject("Doors", geometryRoot, doors.ToMesh(), doorMat, false);
             CreateMeshObject("Glass", geometryRoot, glass.ToMesh(), glassMat, false);
-            if (!layout.Cutaway)
-            {
-                CreateMeshObject("Ceilings", geometryRoot, ceilings.ToMesh(), ceilingMat, false);
-            }
         }
 
         private void CreateItemVisual(PlacedItem item)
@@ -226,165 +230,75 @@ namespace Homepad.Home
             var go = new GameObject($"Item_{item.DisplayName}_{item.InstanceId}");
             go.transform.SetParent(itemRoot, false);
             var view = go.AddComponent<HomeItemView>();
-            Transform visual;
-            Transform curtainLeaf = null;
 
-            switch (item.Kind)
+            if (apartmentRig != null)
             {
-                case HomeItemKind.Light:
-                    visual = SpawnKitOrPrimitive(go.transform, ceilingLampPrefab, PrimitiveType.Sphere, new Vector3(0.28f, 0.18f, 0.28f));
-                    go.transform.position = layout.CellCenter(item.Cell, HomeLayout.WallHeight - 0.35f);
-                    break;
-                case HomeItemKind.Vent:
-                    visual = CreatePrimitive(go.transform, PrimitiveType.Cylinder, new Vector3(0.45f, 0.04f, 0.45f));
-                    go.transform.position = layout.CellCenter(item.Cell, HomeLayout.WallHeight - 0.12f);
-                    break;
-                case HomeItemKind.Elevator:
-                    visual = CreatePrimitive(go.transform, PrimitiveType.Cube, new Vector3(0.7f, 1.6f, 0.7f));
-                    go.transform.position = layout.CellCenter(item.Cell, 0.8f);
-                    break;
-                case HomeItemKind.ElectricCurtain:
-                    go.transform.position = layout.WallCenter(item.Cell, item.WallDir, 1.15f);
-                    go.transform.rotation = Quaternion.LookRotation(
-                        new Vector3(HomeLayout.DirVec[item.WallDir].x, 0f, HomeLayout.DirVec[item.WallDir].y));
-                    visual = SpawnKitOrPrimitive(go.transform, curtainPrefab, PrimitiveType.Cube, new Vector3(HomeLayout.CellSize * 0.9f, 1.5f, 0.06f));
-                    curtainLeaf = visual;
-                    break;
-                case HomeItemKind.Heating:
-                    go.transform.position = layout.WallCenter(item.Cell, item.WallDir, 1.05f);
-                    go.transform.rotation = Quaternion.LookRotation(
-                        new Vector3(HomeLayout.DirVec[item.WallDir].x, 0f, HomeLayout.DirVec[item.WallDir].y));
-                    visual = SpawnKitOrPrimitive(go.transform, wallHeaterPrefab, PrimitiveType.Cube, new Vector3(0.32f, 0.48f, 0.1f));
-                    break;
-                default:
-                    go.transform.position = layout.WallCenter(item.Cell, item.WallDir, 1.15f);
-                    go.transform.rotation = Quaternion.LookRotation(
-                        new Vector3(HomeLayout.DirVec[item.WallDir].x, 0f, HomeLayout.DirVec[item.WallDir].y));
-                    visual = CreatePrimitive(go.transform, PrimitiveType.Cube, new Vector3(0.32f, 0.48f, 0.1f));
-                    break;
+                var anchor = apartmentRig.GetAnchor(item.Kind, item.RoomHint);
+                go.transform.position = anchor != null ? anchor.position : Vector3.zero;
+            }
+            else
+            {
+                go.transform.position = layout != null ? layout.CellCenter(item.Cell, 1.0f) : Vector3.zero;
             }
 
             var box = go.AddComponent<BoxCollider>();
-            box.size = item.Kind == HomeItemKind.ElectricCurtain
-                ? new Vector3(HomeLayout.CellSize * 0.9f, 1.5f, 0.2f)
-                : item.Kind == HomeItemKind.Elevator
-                    ? new Vector3(0.75f, 1.6f, 0.75f)
-                    : item.Surface == Surface.Ceiling
-                        ? new Vector3(0.6f, 0.35f, 0.6f)
-                        : new Vector3(0.4f, 0.55f, 0.25f);
+            box.size = new Vector3(0.8f, 0.8f, 0.8f);
 
-            view.Bind(item, visual, curtainLeaf);
+            view.Bind(item, null, null);
             views[item.InstanceId] = view;
         }
 
         private void ApplyItemState(HomeItemView view, WallpadManager manager)
         {
             if (view == null || view.Item == null) return;
-            if (ApplyKitState(view, manager)) return;
             if (view.Visual == null) return;
             var renderer = view.Visual.GetComponent<MeshRenderer>();
             if (renderer == null) return;
-            Color color = new Color(0.55f, 0.58f, 0.62f);
             var item = view.Item;
 
+            Color color = new Color(0.65f, 0.68f, 0.75f);
             switch (item.Kind)
             {
                 case HomeItemKind.Light:
                     var light = FindLight(manager, item.DeviceId);
-                    color = light != null && light.isOn ? new Color(1f, 0.92f, 0.45f) : new Color(0.55f, 0.55f, 0.5f);
+                    bool lightOn = light != null && light.isOn;
+                    color = lightOn ? new Color(1f, 0.94f, 0.55f) : new Color(0.45f, 0.48f, 0.55f);
+                    var bulbLight = view.GetComponentInChildren<Light>(true);
+                    if (bulbLight != null) bulbLight.enabled = lightOn;
                     break;
                 case HomeItemKind.Heating:
                     var room = FindHeat(manager, item.DeviceId);
                     color = room != null && room.isPowered
-                        ? (room.isAwayMode ? new Color(0.45f, 0.65f, 0.95f) : new Color(0.95f, 0.45f, 0.28f))
-                        : new Color(0.4f, 0.4f, 0.45f);
+                        ? (room.isAwayMode ? new Color(0.45f, 0.70f, 1.0f) : new Color(1.0f, 0.45f, 0.22f))
+                        : new Color(0.38f, 0.40f, 0.46f);
                     break;
                 case HomeItemKind.Gas:
                     bool open = manager != null && manager.Gas.isOpen;
-                    color = open ? new Color(0.9f, 0.3f, 0.28f) : new Color(0.3f, 0.75f, 0.4f);
+                    color = open ? new Color(0.95f, 0.32f, 0.28f) : new Color(0.35f, 0.82f, 0.48f);
                     break;
                 case HomeItemKind.Vent:
                     color = manager != null && manager.Ventilation.isPowered
-                        ? new Color(0.4f, 0.75f, 0.95f)
-                        : new Color(0.45f, 0.48f, 0.52f);
+                        ? new Color(0.4f, 0.78f, 1.0f)
+                        : new Color(0.45f, 0.48f, 0.55f);
                     break;
                 case HomeItemKind.Elevator:
                     color = manager != null && manager.Elevator.isCalled
-                        ? new Color(0.35f, 0.55f, 0.95f)
-                        : new Color(0.5f, 0.52f, 0.58f);
+                        ? new Color(0.38f, 0.65f, 1.0f)
+                        : new Color(0.52f, 0.55f, 0.62f);
                     break;
                 case HomeItemKind.ElectricCurtain:
-                    color = new Color(0.55f, 0.38f, 0.55f);
-                    if (view.CurtainLeaf != null)
-                    {
-                        float openAmt = item.CurtainOpen;
-                        view.CurtainLeaf.localScale = new Vector3(
-                            Mathf.Lerp(HomeLayout.CellSize * 0.9f, HomeLayout.CellSize * 0.12f, openAmt),
-                            1.5f,
-                            0.06f);
-                        view.CurtainLeaf.localPosition = new Vector3(
-                            Mathf.Lerp(0f, -HomeLayout.CellSize * 0.38f, openAmt),
-                            0f,
-                            0f);
-                    }
-
+                    color = new Color(0.85f, 0.78f, 0.68f);
                     break;
             }
 
-            renderer.material.color = color;
-            SetMatColor(renderer.material, color);
-        }
-
-        private bool ApplyKitState(HomeItemView view, WallpadManager manager)
-        {
-            var item = view.Item;
-            if (item.Kind == HomeItemKind.Light)
+            if (renderer.material != null)
             {
-                var bulb = view.GetComponentInChildren<Light>(true);
-                if (bulb == null && livingRig == null) return false;
-                var state = FindLight(manager, item.DeviceId);
-                bool on = state != null && state.isOn;
-                if (bulb != null)
+                renderer.material.color = color;
+                if (renderer.material.HasProperty("_EmissionColor"))
                 {
-                    bulb.enabled = true;
-                    bulb.intensity = on ? 7.5f : 0.15f;
-                    bulb.color = on ? new Color(1f, 0.93f, 0.78f) : new Color(0.35f, 0.42f, 0.55f);
+                    renderer.material.SetColor("_EmissionColor", color * 0.8f);
                 }
-
-                livingRig?.SetLit(on);
-                var shade = view.transform.Find("CeilingLamp/Shade") ?? view.transform.Find("Shade");
-                var shadeRenderer = shade != null ? shade.GetComponent<MeshRenderer>() : null;
-                if (shadeRenderer != null)
-                {
-                    var mat = shadeRenderer.material;
-                    if (mat.HasProperty("_EmissionColor"))
-                    {
-                        mat.EnableKeyword("_EMISSION");
-                        mat.SetColor("_EmissionColor", on ? new Color(2.2f, 1.9f, 1.2f) : new Color(0.05f, 0.05f, 0.06f));
-                    }
-                }
-
-                return bulb != null || livingRig != null;
             }
-
-            if (item.Kind == HomeItemKind.Heating)
-            {
-                var glow = view.GetComponentInChildren<HeaterGlow>(true);
-                if (glow == null) return false;
-                var room = FindHeat(manager, item.DeviceId);
-                glow.SetOn(room != null && room.isPowered && !room.isAwayMode);
-                return true;
-            }
-
-            if (item.Kind == HomeItemKind.ElectricCurtain)
-            {
-                var cloth = view.GetComponentInChildren<CurtainCloth>(true);
-                if (cloth == null) return false;
-                cloth.SetOpen(item.CurtainOpen);
-                return true;
-            }
-
-            return false;
         }
 
         private Transform SpawnKitOrPrimitive(Transform parent, GameObject prefab, PrimitiveType fallback, Vector3 scale)
@@ -408,12 +322,12 @@ namespace Homepad.Home
             return null;
         }
 
-        private static HeatingState FindHeat(WallpadManager manager, int id)
+        private static HeatingState FindHeat(WallpadManager manager, int roomId)
         {
             if (manager == null) return null;
             for (int i = 0; i < manager.HeatingRooms.Count; i++)
             {
-                if (manager.HeatingRooms[i].roomId == id) return manager.HeatingRooms[i];
+                if (manager.HeatingRooms[i].roomId == roomId) return manager.HeatingRooms[i];
             }
 
             return null;
@@ -421,204 +335,79 @@ namespace Homepad.Home
 
         private Transform CreatePrimitive(Transform parent, PrimitiveType type, Vector3 scale)
         {
-            var prim = GameObject.CreatePrimitive(type);
-            prim.transform.SetParent(parent, false);
-            prim.transform.localPosition = Vector3.zero;
-            prim.transform.localRotation = Quaternion.identity;
-            prim.transform.localScale = scale;
-            var col = prim.GetComponent<Collider>();
-            if (col != null) Object.Destroy(col);
-            var renderer = prim.GetComponent<MeshRenderer>();
-            renderer.shadowCastingMode = ShadowCastingMode.Off;
-            renderer.material = new Material(UnlitShader());
-            SetMatColor(renderer.material, Color.gray);
-            materials.Add(renderer.material);
-            return prim.transform;
-        }
-
-        private static bool IsNearWall(int dir)
-        {
-            return dir == (int)WallDir.South || dir == (int)WallDir.West;
-        }
-
-        private void AddFloor(MeshAccum accum, Vector2Int cell)
-        {
-            float s = HomeLayout.CellSize;
-            float x = cell.x * s;
-            float z = cell.y * s;
-            accum.AddQuad(
-                new Vector3(x, 0f, z),
-                new Vector3(x + s, 0f, z),
-                new Vector3(x + s, 0f, z + s),
-                new Vector3(x, 0f, z + s),
-                Vector3.up);
-            accum.AddQuad(
-                new Vector3(x, 0f, z),
-                new Vector3(x, 0f, z + s),
-                new Vector3(x + s, 0f, z + s),
-                new Vector3(x + s, 0f, z),
-                Vector3.down);
-        }
-
-        private void AddCeiling(MeshAccum accum, Vector2Int cell)
-        {
-            float s = HomeLayout.CellSize;
-            float h = HomeLayout.WallHeight;
-            float x = cell.x * s;
-            float z = cell.y * s;
-            accum.AddQuad(
-                new Vector3(x, h, z + s),
-                new Vector3(x + s, h, z + s),
-                new Vector3(x + s, h, z),
-                new Vector3(x, h, z),
-                Vector3.down);
-        }
-
-        private void AddWall(MeshAccum accum, Vector2Int cell, int dir, float y0, float y1)
-        {
-            GetWallCorners(cell, dir, y0, y1, out var a, out var b, out var c, out var d, out var n);
-            accum.AddQuad(a, b, c, d, n);
-            accum.AddQuad(b, a, d, c, -n);
-        }
-
-        private void AddDoorFrame(MeshAccum accum, Vector2Int cell, int dir)
-        {
-            float doorWidth = HomeLayout.CellSize * 0.36f;
-            float side = (HomeLayout.CellSize - doorWidth) * 0.5f;
-            AddWallSegment(accum, cell, dir, 0f, side, 0f, HomeLayout.WallHeight);
-            AddWallSegment(accum, cell, dir, HomeLayout.CellSize - side, HomeLayout.CellSize, 0f, HomeLayout.WallHeight);
-            AddWallSegment(accum, cell, dir, side, HomeLayout.CellSize - side, 2.05f, HomeLayout.WallHeight);
-        }
-
-        private void AddWindow(MeshAccum glass, MeshAccum frames, Vector2Int cell, int dir)
-        {
-            float sill = 0.45f;
-            float header = 2.05f;
-            AddWall(frames, cell, dir, 0f, sill);
-            AddWall(frames, cell, dir, header, HomeLayout.WallHeight);
-            GetWallCorners(cell, dir, sill, header, out var a, out var b, out var c, out var d, out var n);
-            Vector3 inset = n * 0.02f;
-            glass.AddQuad(a + inset, b + inset, c + inset, d + inset, n);
-            glass.AddQuad(b - inset, a - inset, d - inset, c - inset, -n);
-        }
-
-        private void AddWallSegment(MeshAccum accum, Vector2Int cell, int dir, float t0, float t1, float y0, float y1)
-        {
-            GetWallCorners(cell, dir, y0, y1, out var a, out var b, out var c, out var d, out var n);
-            Vector3 along = b - a;
-            Vector3 a0 = a + along * (t0 / HomeLayout.CellSize);
-            Vector3 b0 = a + along * (t1 / HomeLayout.CellSize);
-            Vector3 d0 = d + (c - d) * (t0 / HomeLayout.CellSize);
-            Vector3 c0 = d + (c - d) * (t1 / HomeLayout.CellSize);
-            accum.AddQuad(a0, b0, c0, d0, n);
-            accum.AddQuad(b0, a0, d0, c0, -n);
-        }
-
-        private static void GetWallCorners(Vector2Int cell, int dir, float y0, float y1,
-            out Vector3 a, out Vector3 b, out Vector3 c, out Vector3 d, out Vector3 n)
-        {
-            float s = HomeLayout.CellSize;
-            float x = cell.x * s;
-            float z = cell.y * s;
-            switch (dir)
-            {
-                case (int)WallDir.North:
-                    a = new Vector3(x, y0, z + s);
-                    b = new Vector3(x + s, y0, z + s);
-                    c = new Vector3(x + s, y1, z + s);
-                    d = new Vector3(x, y1, z + s);
-                    n = Vector3.forward;
-                    break;
-                case (int)WallDir.East:
-                    a = new Vector3(x + s, y0, z);
-                    b = new Vector3(x + s, y0, z + s);
-                    c = new Vector3(x + s, y1, z + s);
-                    d = new Vector3(x + s, y1, z);
-                    n = Vector3.right;
-                    break;
-                case (int)WallDir.South:
-                    a = new Vector3(x + s, y0, z);
-                    b = new Vector3(x, y0, z);
-                    c = new Vector3(x, y1, z);
-                    d = new Vector3(x + s, y1, z);
-                    n = Vector3.back;
-                    break;
-                default:
-                    a = new Vector3(x, y0, z + s);
-                    b = new Vector3(x, y0, z);
-                    c = new Vector3(x, y1, z);
-                    d = new Vector3(x, y1, z + s);
-                    n = Vector3.left;
-                    break;
-            }
+            var go = GameObject.CreatePrimitive(type);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localScale = scale;
+            Object.Destroy(go.GetComponent<Collider>());
+            var r = go.GetComponent<MeshRenderer>();
+            r.sharedMaterial = wallMat;
+            return go.transform;
         }
 
         private void EnsureMaterials()
         {
             if (floorMat != null) return;
-            var shader = UnlitShader();
-            groundMat = Make(shader, new Color(0.10f, 0.13f, 0.16f), false);
-            wallMat = Make(shader, new Color(0.82f, 0.80f, 0.74f), false);
-            doorMat = Make(shader, new Color(0.62f, 0.48f, 0.34f), false);
-            ceilingMat = Make(shader, new Color(0.90f, 0.90f, 0.88f), false);
-            glassMat = Make(shader, new Color(0.45f, 0.72f, 0.88f, 0.35f), true);
-            ghostMat = Make(shader, new Color(0.4f, 0.7f, 1f, 0.4f), true);
-            floorMat = Make(shader, new Color(0.55f, 0.50f, 0.42f), false);
-            roomFloors[RoomHint.Living] = Make(shader, new Color(0.62f, 0.56f, 0.46f), false);
-            roomFloors[RoomHint.Master] = Make(shader, new Color(0.48f, 0.52f, 0.62f), false);
-            roomFloors[RoomHint.Bedroom] = Make(shader, new Color(0.58f, 0.46f, 0.52f), false);
-            roomFloors[RoomHint.Bedroom2] = Make(shader, new Color(0.46f, 0.56f, 0.50f), false);
-            roomFloors[RoomHint.Kitchen] = Make(shader, new Color(0.60f, 0.54f, 0.42f), false);
-            roomFloors[RoomHint.Entrance] = Make(shader, new Color(0.42f, 0.43f, 0.46f), false);
+            floorMat = CreateMat("Mat_Floor", new Color(0.24f, 0.28f, 0.35f));
+            wallMat = CreateMat("Mat_Wall", new Color(0.88f, 0.90f, 0.94f));
+            doorMat = CreateMat("Mat_Door", new Color(0.55f, 0.42f, 0.32f));
+            glassMat = CreateMat("Mat_Glass", new Color(0.55f, 0.75f, 0.95f, 0.35f));
+            ceilingMat = CreateMat("Mat_Ceiling", new Color(0.92f, 0.93f, 0.96f));
+            groundMat = CreateMat("Mat_Ground", new Color(0.06f, 0.07f, 0.10f));
+            ghostMat = CreateMat("Mat_Ghost", new Color(0.35f, 0.75f, 1f, 0.45f));
+
+            roomFloors[RoomHint.Living] = CreateMat("Floor_Living", new Color(0.26f, 0.30f, 0.38f));
+            roomFloors[RoomHint.Master] = CreateMat("Floor_Master", new Color(0.32f, 0.28f, 0.34f));
+            roomFloors[RoomHint.Bedroom] = CreateMat("Floor_Bedroom", new Color(0.25f, 0.32f, 0.30f));
+            roomFloors[RoomHint.Bedroom2] = CreateMat("Floor_Bedroom2", new Color(0.28f, 0.30f, 0.34f));
+            roomFloors[RoomHint.Kitchen] = CreateMat("Floor_Kitchen", new Color(0.30f, 0.30f, 0.26f));
+            roomFloors[RoomHint.Entrance] = CreateMat("Floor_Entrance", new Color(0.22f, 0.24f, 0.28f));
         }
 
-        private Material RoomFloor(RoomHint hint)
+        private Material CreateMat(string name, Color color)
         {
-            return roomFloors.TryGetValue(hint, out var mat) ? mat : floorMat;
-        }
-
-        private Material Make(Shader shader, Color color, bool transparent)
-        {
-            var mat = new Material(shader);
+            var shader = Shader.Find("Universal Render Pipeline/Lit")
+                         ?? Shader.Find("Standard")
+                         ?? Shader.Find("Hidden/InternalErrorShader");
+            var mat = new Material(shader) { name = name };
             SetMatColor(mat, color);
-            if (transparent)
-            {
-                mat.SetFloat("_Surface", 1f);
-                mat.SetOverrideTag("RenderType", "Transparent");
-                mat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-                mat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-                mat.SetInt("_ZWrite", 0);
-                mat.DisableKeyword("_ALPHATEST_ON");
-                mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-                mat.EnableKeyword("_ALPHAPREMULTIPLY_ON");
-                mat.renderQueue = 3000;
-            }
-
             materials.Add(mat);
             return mat;
         }
 
-        private static void SetMatColor(Material mat, Color color)
+        private Material RoomFloor(RoomHint hint)
+        {
+            if (roomFloors.TryGetValue(hint, out var m)) return m;
+            return floorMat;
+        }
+
+        private static void SetMatColor(Material mat, Color c)
         {
             if (mat == null) return;
-            mat.color = color;
-            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
-            if (mat.HasProperty("_Color")) mat.SetColor("_Color", color);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", c);
+            else if (mat.HasProperty("_Color")) mat.SetColor("_Color", c);
         }
 
-        private static Shader UnlitShader()
+        private static void ClearChildren(Transform t)
         {
-            return Shader.Find("Universal Render Pipeline/Unlit")
-                   ?? Shader.Find("Sprites/Default")
-                   ?? Shader.Find("Unlit/Color")
-                   ?? Shader.Find("Standard");
+            if (t == null) return;
+            for (int i = t.childCount - 1; i >= 0; i--)
+            {
+                var child = t.GetChild(i);
+                if (Application.isPlaying) Object.Destroy(child.gameObject);
+                else Object.DestroyImmediate(child.gameObject);
+            }
         }
 
-        private static Mesh CreateQuadMesh(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 n)
+        private static Mesh CreateQuadMesh(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Vector3 normal)
         {
-            var accum = new MeshAccum();
-            accum.AddQuad(a, b, c, d, n);
-            return accum.ToMesh();
+            var mesh = new Mesh { name = "Quad" };
+            mesh.vertices = new[] { p0, p1, p2, p3 };
+            mesh.normals = new[] { normal, normal, normal, normal };
+            mesh.uv = new[] { new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f) };
+            mesh.triangles = new[] { 0, 2, 1, 0, 3, 2 };
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         private static GameObject CreateMeshObject(string name, Transform parent, Mesh mesh, Material mat, bool collider)
@@ -628,66 +417,99 @@ namespace Homepad.Home
             go.transform.SetParent(parent, false);
             var filter = go.AddComponent<MeshFilter>();
             filter.sharedMesh = mesh;
-            var renderer = go.AddComponent<MeshRenderer>();
-            renderer.sharedMaterial = mat;
-            renderer.shadowCastingMode = ShadowCastingMode.Off;
-            if (collider)
-            {
-                go.AddComponent<MeshCollider>();
-            }
-
+            var rend = go.AddComponent<MeshRenderer>();
+            rend.sharedMaterial = mat;
+            rend.shadowCastingMode = ShadowCastingMode.On;
+            rend.receiveShadows = true;
+            if (collider) go.AddComponent<MeshCollider>().sharedMesh = mesh;
             return go;
         }
 
-        private static void ClearChildren(Transform root)
+        private void AddFloor(MeshAccum accum, Vector2Int cell)
         {
-            if (root == null) return;
-            for (int i = root.childCount - 1; i >= 0; i--)
-            {
-                Object.Destroy(root.GetChild(i).gameObject);
-            }
+            Vector3 c = layout.CellCenter(cell, 0f);
+            float h = HomeLayout.CellSize * 0.5f;
+            accum.AddQuad(
+                new Vector3(c.x - h, 0f, c.z - h),
+                new Vector3(c.x + h, 0f, c.z - h),
+                new Vector3(c.x + h, 0f, c.z + h),
+                new Vector3(c.x - h, 0f, c.z + h),
+                Vector3.up);
         }
 
-        private void OnDestroy()
+        private void AddCeiling(MeshAccum accum, Vector2Int cell)
         {
-            for (int i = 0; i < materials.Count; i++)
+            Vector3 c = layout.CellCenter(cell, HomeLayout.WallHeight);
+            float h = HomeLayout.CellSize * 0.5f;
+            accum.AddQuad(
+                new Vector3(c.x - h, HomeLayout.WallHeight, c.z + h),
+                new Vector3(c.x + h, HomeLayout.WallHeight, c.z + h),
+                new Vector3(c.x + h, HomeLayout.WallHeight, c.z - h),
+                new Vector3(c.x - h, HomeLayout.WallHeight, c.z - h),
+                Vector3.down);
+        }
+
+        private void AddWall(MeshAccum accum, Vector2Int cell, int dir, float y0, float y1)
+        {
+            Vector3 c = layout.CellCenter(cell, 0f);
+            float h = HomeLayout.CellSize * 0.5f;
+            Vector3 a, b;
+            switch (dir)
             {
-                if (materials[i] != null) Object.Destroy(materials[i]);
+                case 0: a = new Vector3(c.x - h, 0f, c.z + h); b = new Vector3(c.x + h, 0f, c.z + h); break;
+                case 1: a = new Vector3(c.x + h, 0f, c.z + h); b = new Vector3(c.x + h, 0f, c.z - h); break;
+                case 2: a = new Vector3(c.x + h, 0f, c.z - h); b = new Vector3(c.x - h, 0f, c.z - h); break;
+                default: a = new Vector3(c.x - h, 0f, c.z - h); b = new Vector3(c.x - h, 0f, c.z + h); break;
             }
+
+            Vector3 n = Vector3.Cross(Vector3.up, b - a).normalized;
+            accum.AddQuad(
+                new Vector3(a.x, y0, a.z),
+                new Vector3(b.x, y0, b.z),
+                new Vector3(b.x, y1, b.z),
+                new Vector3(a.x, y1, a.z),
+                n);
+        }
+
+        private void AddWindow(MeshAccum glass, MeshAccum walls, Vector2Int cell, int dir)
+        {
+            AddWall(walls, cell, dir, 0f, 0.9f);
+            AddWall(walls, cell, dir, 2.0f, HomeLayout.WallHeight);
+            AddWall(glass, cell, dir, 0.9f, 2.0f);
+        }
+
+        private void AddDoorFrame(MeshAccum doors, Vector2Int cell, int dir)
+        {
+            AddWall(doors, cell, dir, 2.0f, HomeLayout.WallHeight);
         }
 
         private sealed class MeshAccum
         {
             private readonly List<Vector3> verts = new List<Vector3>();
-            private readonly List<int> tris = new List<int>();
             private readonly List<Vector3> norms = new List<Vector3>();
+            private readonly List<Vector2> uvs = new List<Vector2>();
+            private readonly List<int> tris = new List<int>();
 
-            public void AddQuad(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 n)
+            public void AddQuad(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Vector3 n)
             {
-                int i = verts.Count;
-                verts.Add(a);
-                verts.Add(b);
-                verts.Add(c);
-                verts.Add(d);
-                norms.Add(n);
-                norms.Add(n);
-                norms.Add(n);
-                norms.Add(n);
-                tris.Add(i);
-                tris.Add(i + 2);
-                tris.Add(i + 1);
-                tris.Add(i);
-                tris.Add(i + 3);
-                tris.Add(i + 2);
+                int start = verts.Count;
+                verts.Add(p0); verts.Add(p1); verts.Add(p2); verts.Add(p3);
+                norms.Add(n); norms.Add(n); norms.Add(n); norms.Add(n);
+                uvs.Add(new Vector2(0f, 0f)); uvs.Add(new Vector2(1f, 0f));
+                uvs.Add(new Vector2(1f, 1f)); uvs.Add(new Vector2(0f, 1f));
+                tris.Add(start + 0); tris.Add(start + 1); tris.Add(start + 2);
+                tris.Add(start + 0); tris.Add(start + 2); tris.Add(start + 3);
             }
 
             public Mesh ToMesh()
             {
                 if (verts.Count == 0) return null;
-                var mesh = new Mesh { name = "HomeMesh" };
+                var mesh = new Mesh { name = "Procedural" };
                 mesh.SetVertices(verts);
-                mesh.SetTriangles(tris, 0);
                 mesh.SetNormals(norms);
+                mesh.SetUVs(0, uvs);
+                mesh.SetTriangles(tris, 0);
+                mesh.RecalculateBounds();
                 return mesh;
             }
         }
