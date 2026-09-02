@@ -71,23 +71,27 @@ namespace Homepad.Editor
             volume.isGlobal = true;
             volume.profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(ProfilePath);
 
-            // 5. Wire IsometricHomeBuilder
+            // 5. Wire kit prefabs on IsometricHomeBuilder
             var builder = Object.FindFirstObjectByType<IsometricHomeBuilder>();
             if (builder != null)
             {
                 var so = new SerializedObject(builder);
-                var modernApartmentPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/ModernApartment.prefab");
-                var prop = so.FindProperty("modernApartmentPrefab");
-                if (prop != null)
-                {
-                    prop.objectReferenceValue = modernApartmentPrefab;
-                    so.ApplyModifiedProperties();
-                }
+                AssignPrefab(so, "ceilingLampPrefab", "Assets/Home/Kit/Prefabs/CeilingLamp.prefab");
+                AssignPrefab(so, "wallHeaterPrefab", "Assets/Home/Kit/Prefabs/WallHeater.prefab");
+                AssignPrefab(so, "curtainPrefab", "Assets/Home/Kit/Prefabs/Curtain.prefab");
+                so.ApplyModifiedProperties();
             }
 
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
             Debug.Log("WallpadMain scene visuals configured and saved successfully!");
+        }
+
+        private static void AssignPrefab(SerializedObject so, string property, string path)
+        {
+            var prop = so.FindProperty(property);
+            if (prop == null) return;
+            prop.objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameObject>(path);
         }
 
         private static void EnsureVolumeProfile()
