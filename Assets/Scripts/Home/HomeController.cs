@@ -16,7 +16,10 @@ namespace Homepad.Home
 
         public event Action LayoutChanged;
         public event Action<PlacedItem> ItemClicked;
+        public event Action<RoomRecord> RoomSelected;
         public event Action OverlayDismissed;
+
+        public RoomRecord SelectedRoom { get; private set; }
 
         private HomeLayout layout;
         private HomeLayoutService service;
@@ -151,6 +154,11 @@ namespace Homepad.Home
                 if (dragView == null)
                 {
                     OverlayDismissed?.Invoke();
+                    var hitRoom = RaycastRoom(mousePos);
+                    if (hitRoom != null)
+                    {
+                        SelectRoom(hitRoom);
+                    }
                 }
             }
 
@@ -183,6 +191,58 @@ namespace Homepad.Home
                 dragging = false;
                 dragView = null;
             }
+        }
+
+        public void SelectRoom(RoomRecord room)
+        {
+            SelectedRoom = room;
+            if (room != null)
+            {
+                RoomSelected?.Invoke(room);
+            }
+        }
+
+        public RoomRecord CreateRoom(RoomHint hint, string customName = null)
+        {
+            if (service == null) return null;
+            var room = service.CreateRoom(hint, customName);
+            if (room != null)
+            {
+                if (builder != null) builder.Rebuild();
+                Save();
+                FrameCamera();
+                SelectRoom(room);
+                NotifyLayoutChanged();
+            }
+            return room;
+        }
+
+        public bool RenameRoom(int roomId, string newName)
+        {
+            if (service == null) return false;
+            bool success = service.RenameRoom(roomId, newName);
+            if (success)
+            {
+                Save();
+                NotifyLayoutChanged();
+            }
+            return success;
+        }
+
+        public RoomRecord RaycastRoom(Vector2 screenPos)
+        {
+            var cam = Camera.main;
+            if (cam == null || layout == null) return null;
+            var ray = cam.ScreenPointToRay(screenPos);
+            var hits = Physics.RaycastAll(ray, 100f);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var hit = hits[i];
+                var cell = layout.WorldToCell(hit.point);
+                var room = layout.RoomAt(cell);
+                if (room != null) return room;
+            }
+            return null;
         }
 
         public void BeginPlacement(HomeItemDef def)

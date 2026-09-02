@@ -30,12 +30,12 @@ namespace Homepad.Home
             return CreateRoom(hint);
         }
 
-        public RoomRecord CreateRoom(RoomHint hint)
+        public RoomRecord CreateRoom(RoomHint hint, string customName = null)
         {
-            return CreateRoom(hint, FindAttachOrigin());
+            return CreateRoom(hint, FindAttachOrigin(), customName);
         }
 
-        public RoomRecord CreateRoom(RoomHint hint, Vector2Int origin)
+        public RoomRecord CreateRoom(RoomHint hint, Vector2Int origin, string customName = null)
         {
             var room = new RoomRecord
             {
@@ -43,12 +43,34 @@ namespace Homepad.Home
                 Hint = hint,
                 Origin = origin,
                 Size = new Vector2Int(HomeLayout.RoomSize, HomeLayout.RoomSize),
-                Name = HomeItemDef.RoomName(hint)
+                Name = !string.IsNullOrEmpty(customName) ? customName : HomeItemDef.RoomName(hint)
             };
             layout.Rooms.Add(room);
             PaintRoom(room);
             RebuildWalls();
             return room;
+        }
+
+        public bool RenameRoom(int roomId, string newName)
+        {
+            if (string.IsNullOrEmpty(newName)) return false;
+            var room = layout.FindRoomById(roomId);
+            if (room == null) return false;
+
+            room.Name = newName;
+            // Update items display names
+            for (int i = 0; i < layout.Items.Count; i++)
+            {
+                var it = layout.Items[i];
+                if (it.RoomHint == room.Hint)
+                {
+                    if (HomeItemDef.CategoryRules.TryGetValue(it.Kind, out var rule))
+                    {
+                        it.DisplayName = $"{newName} {rule.CategoryName}";
+                    }
+                }
+            }
+            return true;
         }
 
         public PlacedItem Place(HomeItemDef def, Vector2Int cell, int wallDir)

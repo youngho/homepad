@@ -29,7 +29,14 @@ namespace Homepad.Home
         Bedroom,
         Bedroom2,
         Kitchen,
-        Entrance
+        Entrance,
+        Study,
+        Kids,
+        DressRoom,
+        Alpha,
+        Balcony,
+        Bathroom,
+        Custom
     }
 
     public enum WallDir
@@ -40,6 +47,36 @@ namespace Homepad.Home
         West = 3
     }
 
+    public sealed class RoomPreset
+    {
+        public readonly RoomHint Hint;
+        public readonly string DefaultName;
+        public readonly string Emoji;
+
+        public RoomPreset(RoomHint hint, string defaultName, string emoji)
+        {
+            Hint = hint;
+            DefaultName = defaultName;
+            Emoji = emoji;
+        }
+
+        public static readonly RoomPreset[] RecommendedPresets =
+        {
+            new RoomPreset(RoomHint.Living, "거실", "🛋️"),
+            new RoomPreset(RoomHint.Master, "안방", "🛏️"),
+            new RoomPreset(RoomHint.Bedroom, "침실 1", "🛌"),
+            new RoomPreset(RoomHint.Bedroom2, "침실 2", "🧸"),
+            new RoomPreset(RoomHint.Study, "서재", "📚"),
+            new RoomPreset(RoomHint.Kids, "아이방", "🎨"),
+            new RoomPreset(RoomHint.DressRoom, "드레스룸", "👗"),
+            new RoomPreset(RoomHint.Kitchen, "주방", "🍳"),
+            new RoomPreset(RoomHint.Entrance, "현관", "🚪"),
+            new RoomPreset(RoomHint.Alpha, "알파룸", "☕"),
+            new RoomPreset(RoomHint.Bathroom, "욕실", "🚿"),
+            new RoomPreset(RoomHint.Balcony, "발코니", "🌿")
+        };
+    }
+
     /// <summary>
     /// Rule-based Device Category Definition defining attachment surface, singleton rules, and allowed spaces.
     /// </summary>
@@ -47,24 +84,25 @@ namespace Homepad.Home
     {
         public readonly HomeItemKind Kind;
         public readonly string CategoryName;
+        public readonly string Emoji;
         public readonly Surface DefaultSurface;
         public readonly bool SingletonPerRoom;
-        public readonly RoomHint[] DefaultAllowedRooms;
+        public readonly string Description;
 
         public DeviceCategoryRule(
             HomeItemKind kind,
             string categoryName,
+            string emoji,
             Surface defaultSurface,
             bool singletonPerRoom,
-            params RoomHint[] allowedRooms)
+            string description)
         {
             Kind = kind;
             CategoryName = categoryName;
+            Emoji = emoji;
             DefaultSurface = defaultSurface;
             SingletonPerRoom = singletonPerRoom;
-            DefaultAllowedRooms = allowedRooms != null && allowedRooms.Length > 0
-                ? allowedRooms
-                : new[] { RoomHint.Living, RoomHint.Master, RoomHint.Bedroom, RoomHint.Bedroom2, RoomHint.Kitchen, RoomHint.Entrance };
+            Description = description;
         }
     }
 
@@ -90,13 +128,13 @@ namespace Homepad.Home
         // 1. Device Category Rules Registry
         public static readonly Dictionary<HomeItemKind, DeviceCategoryRule> CategoryRules = new Dictionary<HomeItemKind, DeviceCategoryRule>
         {
-            [HomeItemKind.Light] = new DeviceCategoryRule(HomeItemKind.Light, "조명", Surface.Ceiling, false),
-            [HomeItemKind.Heating] = new DeviceCategoryRule(HomeItemKind.Heating, "난방", Surface.Wall, true, RoomHint.Living, RoomHint.Master, RoomHint.Bedroom, RoomHint.Bedroom2),
-            [HomeItemKind.ElectricCurtain] = new DeviceCategoryRule(HomeItemKind.ElectricCurtain, "전동커튼", Surface.Window, false, RoomHint.Living, RoomHint.Master, RoomHint.Bedroom, RoomHint.Bedroom2),
-            [HomeItemKind.Vent] = new DeviceCategoryRule(HomeItemKind.Vent, "환기", Surface.Ceiling, true, RoomHint.Living, RoomHint.Kitchen),
-            [HomeItemKind.Gas] = new DeviceCategoryRule(HomeItemKind.Gas, "가스 밸브", Surface.Wall, true, RoomHint.Kitchen),
-            [HomeItemKind.Elevator] = new DeviceCategoryRule(HomeItemKind.Elevator, "엘리베이터", Surface.Floor, true, RoomHint.Entrance),
-            [HomeItemKind.AirConditioner] = new DeviceCategoryRule(HomeItemKind.AirConditioner, "에어컨", Surface.Ceiling, true, RoomHint.Living, RoomHint.Master, RoomHint.Bedroom, RoomHint.Bedroom2)
+            [HomeItemKind.Light] = new DeviceCategoryRule(HomeItemKind.Light, "조명", "💡", Surface.Ceiling, false, "천장 무드 조명"),
+            [HomeItemKind.Heating] = new DeviceCategoryRule(HomeItemKind.Heating, "난방", "🔥", Surface.Wall, true, "바닥 온돌 난방 조절기"),
+            [HomeItemKind.ElectricCurtain] = new DeviceCategoryRule(HomeItemKind.ElectricCurtain, "전동커튼", "🪟", Surface.Window, false, "3D 스마트 창문 커튼"),
+            [HomeItemKind.AirConditioner] = new DeviceCategoryRule(HomeItemKind.AirConditioner, "에어컨", "❄️", Surface.Ceiling, true, "천장형 시스템 에어컨"),
+            [HomeItemKind.Vent] = new DeviceCategoryRule(HomeItemKind.Vent, "환기", "🌀", Surface.Ceiling, true, "천장 공기 청정 환기"),
+            [HomeItemKind.Gas] = new DeviceCategoryRule(HomeItemKind.Gas, "가스 밸브", "🛡️", Surface.Wall, true, "주방 안전 자동 차단 밸브"),
+            [HomeItemKind.Elevator] = new DeviceCategoryRule(HomeItemKind.Elevator, "엘리베이터", "🛗", Surface.Floor, true, "현관 엘리베이터 호출기")
         };
 
         // 2. Predefined Quick Catalog
@@ -120,15 +158,16 @@ namespace Homepad.Home
         /// <summary>
         /// Dynamically creates a HomeItemDef based on device kind and room hint according to system rules.
         /// </summary>
-        public static HomeItemDef Create(HomeItemKind kind, RoomHint room)
+        public static HomeItemDef Create(HomeItemKind kind, RoomHint room, string customRoomName = null)
         {
             if (!CategoryRules.TryGetValue(kind, out var rule))
             {
-                rule = new DeviceCategoryRule(kind, kind.ToString(), Surface.Floor, false);
+                rule = new DeviceCategoryRule(kind, kind.ToString(), "📦", Surface.Floor, false, "");
             }
 
+            string rName = !string.IsNullOrEmpty(customRoomName) ? customRoomName : RoomName(room);
             string catId = $"{kind.ToString().ToLower()}_{room.ToString().ToLower()}";
-            string name = $"{RoomName(room)} {rule.CategoryName}";
+            string name = $"{rName} {rule.CategoryName}";
             return new HomeItemDef(catId, kind, rule.DefaultSurface, room, name, rule.SingletonPerRoom);
         }
 
@@ -156,7 +195,33 @@ namespace Homepad.Home
                 RoomHint.Bedroom2 => "침실 2",
                 RoomHint.Kitchen => "주방",
                 RoomHint.Entrance => "현관",
-                _ => "방"
+                RoomHint.Study => "서재",
+                RoomHint.Kids => "아이방",
+                RoomHint.DressRoom => "드레스룸",
+                RoomHint.Alpha => "알파룸",
+                RoomHint.Bathroom => "욕실",
+                RoomHint.Balcony => "발코니",
+                _ => "공간"
+            };
+        }
+
+        public static string RoomEmoji(RoomHint hint)
+        {
+            return hint switch
+            {
+                RoomHint.Living => "🛋️",
+                RoomHint.Master => "🛏️",
+                RoomHint.Bedroom => "🛌",
+                RoomHint.Bedroom2 => "🧸",
+                RoomHint.Kitchen => "🍳",
+                RoomHint.Entrance => "🚪",
+                RoomHint.Study => "📚",
+                RoomHint.Kids => "🎨",
+                RoomHint.DressRoom => "👗",
+                RoomHint.Alpha => "☕",
+                RoomHint.Bathroom => "🚿",
+                RoomHint.Balcony => "🌿",
+                _ => "🏠"
             };
         }
 
@@ -170,7 +235,6 @@ namespace Homepad.Home
                     return Catalog[i];
             }
 
-            // Parse dynamic catalog IDs: e.g. "light_bedroom" or "curtain_master"
             int under = catalogId.IndexOf('_');
             if (under > 0)
             {
