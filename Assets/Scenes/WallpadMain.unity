@@ -223,6 +223,7 @@ GameObject:
   - component: {fileID: 200002}
   - component: {fileID: 200003}
   - component: {fileID: 200004}
+  - component: {fileID: 200005}
   m_Layer: 0
   m_Name: WallpadSystem
   m_TagString: Untagged
@@ -302,6 +303,25 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2d2b19cb00a3e42ad898885a7f31cd90, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Homepad.Core:Homepad.Core:UnityMainThreadDispatcher
+--- !u!114 &200005
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 200000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c4e9a12b8d64f3e9a51c0d2e6b47f80, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Homepad.UI.PadDayCycle
+  targetCamera: {fileID: 100002}
+  keyLight: {fileID: 644204825}
+  fillLight: {fileID: 2024069666}
+  headerChrome: {fileID: 1569063645}
+  padWash: {fileID: 400003}
+  previewOverride: 0
+  previewHour: 12
 --- !u!1 &300000
 GameObject:
   m_ObjectHideFlags: 0

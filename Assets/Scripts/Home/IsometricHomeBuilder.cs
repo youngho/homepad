@@ -34,6 +34,12 @@ namespace Homepad.Home
         public IReadOnlyDictionary<string, HomeItemView> Views => views;
         public DioramaRoomRig DioramaRig => dioramaRig;
 
+        public void SetGroundColor(Color color)
+        {
+            if (groundMat == null) return;
+            SetMatColor(groundMat, color);
+        }
+
         public void Initialize(HomeLayout homeLayout)
         {
             layout = homeLayout;
