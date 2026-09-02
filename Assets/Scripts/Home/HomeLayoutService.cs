@@ -32,7 +32,11 @@ namespace Homepad.Home
 
         public RoomRecord CreateRoom(RoomHint hint)
         {
-            var origin = FindAttachOrigin();
+            return CreateRoom(hint, FindAttachOrigin());
+        }
+
+        public RoomRecord CreateRoom(RoomHint hint, Vector2Int origin)
+        {
             var room = new RoomRecord
             {
                 Id = layout.NextRoomId(),
@@ -227,12 +231,14 @@ namespace Homepad.Home
             int cy = room.Origin.y + room.Size.y / 2;
             if (def.Surface == Surface.Wall || def.Kind == HomeItemKind.ElectricCurtain)
             {
-                return new Vector2Int(room.Origin.x + room.Size.x / 2, room.Origin.y + room.Size.y - 1);
+                var view = HomeLayout.CutawayView.FromCamera(CameraForward());
+                return layout.EdgeCell(room, view.PrimaryBack);
             }
 
             if (def.Kind == HomeItemKind.Elevator)
             {
-                return new Vector2Int(cx, room.Origin.y);
+                var view = HomeLayout.CutawayView.FromCamera(CameraForward());
+                return layout.EdgeCell(room, view.PrimaryFront);
             }
 
             return new Vector2Int(cx, cy);
@@ -240,15 +246,22 @@ namespace Homepad.Home
 
         public int DefaultWallDir(HomeItemDef def, RoomRecord room, Vector2Int cell)
         {
+            var view = HomeLayout.CutawayView.FromCamera(CameraForward());
             if (def.Kind == HomeItemKind.ElectricCurtain)
             {
-                int dir = (int)WallDir.North;
+                int dir = view.PrimaryBack;
                 TryPickExteriorWall(cell, ref dir, room);
                 return dir;
             }
 
             if (def.Surface != Surface.Wall) return 0;
-            return ClampWallDir(cell, (int)WallDir.South, room);
+            return ClampWallDir(cell, view.PrimaryBack, room);
+        }
+
+        private static Vector3 CameraForward()
+        {
+            var cam = Camera.main;
+            return cam != null ? cam.transform.forward : new Vector3(1f, -1f, 1f);
         }
 
         private void BindDevice(PlacedItem item)
@@ -302,17 +315,24 @@ namespace Homepad.Home
                 maxY = Mathf.Max(maxY, pair.Key.y);
             }
 
+            int step = HomeLayout.RoomSize;
             var candidates = new Vector2Int[]
             {
-                new Vector2Int(minX, maxY + 1),
-                new Vector2Int(maxX + 1, minY),
-                new Vector2Int(minX, minY - HomeLayout.RoomSize),
-                new Vector2Int(minX - HomeLayout.RoomSize, minY)
+                new Vector2Int(0, step),
+                new Vector2Int(step, 0),
+                new Vector2Int(-step, 0),
+                new Vector2Int(step, step),
+                new Vector2Int(-step, step),
+                new Vector2Int(0, -step),
+                new Vector2Int(step, -step),
+                new Vector2Int(-step, -step),
+                new Vector2Int(step * 2, 0),
+                new Vector2Int(0, step * 2)
             };
 
             for (int i = 0; i < candidates.Length; i++)
             {
-                if (!RectOccupied(candidates[i], HomeLayout.RoomSize)) return candidates[i];
+                if (!RectOccupied(candidates[i], step)) return candidates[i];
             }
 
             for (int radius = 1; radius < 12; radius++)
@@ -320,7 +340,7 @@ namespace Homepad.Home
                 for (int i = 0; i < AttachDirs.Length; i++)
                 {
                     var origin = new Vector2Int(minX, minY) + AttachDirs[i] * radius;
-                    if (!RectOccupied(origin, HomeLayout.RoomSize)) return origin;
+                    if (!RectOccupied(origin, step)) return origin;
                 }
             }
 
@@ -370,6 +390,8 @@ namespace Homepad.Home
             {
                 var cell = pair.Value;
                 if (!cell.HasFloor) continue;
+                var room = layout.FindRoomById(cell.RoomId);
+
                 for (int d = 0; d < 4; d++)
                 {
                     cell.Walls[d] = false;
@@ -383,7 +405,27 @@ namespace Homepad.Home
                     }
                     else if (nb.RoomId != cell.RoomId)
                     {
-                        cell.Doors[d] = true;
+                        // Dividing wall between different rooms
+                        // Center 1 or 2 cells become a doorway, ends become dividing walls
+                        if (room != null)
+                        {
+                            int coord = (d == 0 || d == 2)
+                                ? (cell.Pos.x - room.Origin.x)
+                                : (cell.Pos.y - room.Origin.y);
+
+                            if (coord == 1 || coord == 2)
+                            {
+                                cell.Doors[d] = true;
+                            }
+                            else
+                            {
+                                cell.Walls[d] = true;
+                            }
+                        }
+                        else
+                        {
+                            cell.Doors[d] = true;
+                        }
                     }
                 }
             }

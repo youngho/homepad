@@ -3539,8 +3539,8 @@ Light:
   m_Enabled: 1
   serializedVersion: 13
   m_Type: 1
-  m_Color: {r: 1, g: 0.97, b: 0.92, a: 1}
-  m_Intensity: 0.55
+  m_Color: {r: 1, g: 0.98, b: 0.94, a: 1}
+  m_Intensity: 1.35
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.802082
@@ -3549,7 +3549,7 @@ Light:
     m_Type: 2
     m_Resolution: -1
     m_CustomResolution: -1
-    m_Strength: 0.65
+    m_Strength: 0.5
     m_Bias: 0.05
     m_NormalBias: 0.4
     m_NearPlane: 0.2
@@ -6009,7 +6009,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1b2c3d4e5f64789a0b1c2d3e4f50606, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Homepad.Home.IsometricHomeBuilder
-  modernApartmentPrefab: {fileID: 3811212342588961928, guid: d5dc6168390784d7895265555486861e, type: 3}
   ceilingLampPrefab: {fileID: 5348421040690460612, guid: a336693dd94fd466a99c53d35e93468a, type: 3}
   wallHeaterPrefab: {fileID: 85345935868173813, guid: d86c7d0f0f58d4c3eb8f3bdd6930ed13, type: 3}
   curtainPrefab: {fileID: 3668455219893058171, guid: fec3169a8434f42f0b51c05ba0cd26f0, type: 3}
@@ -12389,8 +12388,8 @@ Light:
   m_Enabled: 1
   serializedVersion: 13
   m_Type: 1
-  m_Color: {r: 0.7, g: 0.78, b: 0.92, a: 1}
-  m_Intensity: 0.14
+  m_Color: {r: 0.88, g: 0.92, b: 1, a: 1}
+  m_Intensity: 0.75
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.802082
@@ -12452,7 +12451,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2024069665}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.06698731, y: 0.9330127, z: -0.25000003, w: 0.25000006}
+  m_LocalRotation: {x: 0.10284744, y: 0.8962008, z: -0.28257102, w: 0.3261904}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0

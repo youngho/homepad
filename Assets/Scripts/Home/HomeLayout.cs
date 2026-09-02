@@ -62,6 +62,48 @@ namespace Homepad.Home
 
         public static int Opposite(int dir) => (dir + 2) % 4;
 
+        public static Vector3 DirNormal(int dir)
+        {
+            Vector2Int v = DirVec[((dir % 4) + 4) % 4];
+            return new Vector3(v.x, 0f, v.y);
+        }
+
+        public readonly struct CutawayView
+        {
+            public readonly Vector3 Forward;
+            public readonly int PrimaryFront;
+            public readonly int SecondaryFront;
+            public readonly int PrimaryBack;
+
+            public CutawayView(Vector3 forward, int primaryFront, int secondaryFront, int primaryBack)
+            {
+                Forward = forward;
+                PrimaryFront = primaryFront;
+                SecondaryFront = secondaryFront;
+                PrimaryBack = primaryBack;
+            }
+
+            public bool IsFront(int dir)
+            {
+                dir = ((dir % 4) + 4) % 4;
+                return dir == PrimaryFront || dir == SecondaryFront;
+            }
+
+            public static CutawayView FromCamera(Vector3 cameraForward)
+            {
+                Vector3 f = new Vector3(cameraForward.x, 0f, cameraForward.z);
+                if (f.sqrMagnitude < 0.0001f) f = new Vector3(1f, 0f, 1f);
+                f.Normalize();
+
+                int frontX = f.x >= 0f ? 3 : 1;
+                int frontZ = f.z >= 0f ? 2 : 0;
+                bool zDominant = Mathf.Abs(f.z) >= Mathf.Abs(f.x);
+                int primaryFront = zDominant ? frontZ : frontX;
+                int secondaryFront = zDominant ? frontX : frontZ;
+                return new CutawayView(f, primaryFront, secondaryFront, Opposite(primaryFront));
+            }
+        }
+
         public HomeCell GetCell(Vector2Int pos)
         {
             Cells.TryGetValue(pos, out var cell);
@@ -160,6 +202,79 @@ namespace Homepad.Home
         public Vector3 CellCenter(Vector2Int cell, float y = 0f)
         {
             return new Vector3((cell.x + 0.5f) * CellSize, y, (cell.y + 0.5f) * CellSize);
+        }
+
+        public Vector3 RoomCenter(RoomRecord room, float y = 0f)
+        {
+            if (room == null) return new Vector3(0f, y, 0f);
+            return new Vector3(
+                (room.Origin.x + room.Size.x * 0.5f) * CellSize,
+                y,
+                (room.Origin.y + room.Size.y * 0.5f) * CellSize);
+        }
+
+        public Vector2Int EdgeCell(RoomRecord room, int dir)
+        {
+            int cx = room.Origin.x + room.Size.x / 2;
+            int cy = room.Origin.y + room.Size.y / 2;
+            switch (((dir % 4) + 4) % 4)
+            {
+                case 0: return new Vector2Int(cx, room.Origin.y + room.Size.y - 1);
+                case 1: return new Vector2Int(room.Origin.x + room.Size.x - 1, cy);
+                case 2: return new Vector2Int(cx, room.Origin.y);
+                default: return new Vector2Int(room.Origin.x, cy);
+            }
+        }
+
+        public bool TryFindPerimeter(RoomRecord room, int preferredDir, out Vector2Int cell, out int dir)
+        {
+            cell = room != null ? room.Origin : Vector2Int.zero;
+            dir = ((preferredDir % 4) + 4) % 4;
+            if (room == null) return false;
+
+            if (TryFindPerimeterExact(room, dir, out cell)) return true;
+            for (int d = 0; d < 4; d++)
+            {
+                if (d == dir) continue;
+                if (TryFindPerimeterExact(room, d, out cell))
+                {
+                    dir = d;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryFindPerimeterExact(RoomRecord room, int dir, out Vector2Int cell)
+        {
+            cell = EdgeCell(room, dir);
+            for (int i = 0; i < Mathf.Max(room.Size.x, room.Size.y); i++)
+            {
+                Vector2Int pos = PerimeterCell(room, dir, i);
+                var c = GetCell(pos);
+                if (c == null || !c.HasFloor) continue;
+                var nb = GetCell(pos + DirVec[dir]);
+                bool exterior = nb == null || !nb.HasFloor;
+                if (exterior && (c.Walls[dir] || c.Windows[dir] || c.Doors[dir]))
+                {
+                    cell = pos;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static Vector2Int PerimeterCell(RoomRecord room, int dir, int index)
+        {
+            switch (dir)
+            {
+                case 0: return new Vector2Int(room.Origin.x + Mathf.Clamp(index, 0, room.Size.x - 1), room.Origin.y + room.Size.y - 1);
+                case 1: return new Vector2Int(room.Origin.x + room.Size.x - 1, room.Origin.y + Mathf.Clamp(index, 0, room.Size.y - 1));
+                case 2: return new Vector2Int(room.Origin.x + Mathf.Clamp(index, 0, room.Size.x - 1), room.Origin.y);
+                default: return new Vector2Int(room.Origin.x, room.Origin.y + Mathf.Clamp(index, 0, room.Size.y - 1));
+            }
         }
 
         public Vector2Int WorldToCell(Vector3 world)

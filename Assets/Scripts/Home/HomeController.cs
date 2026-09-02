@@ -420,6 +420,13 @@ namespace Homepad.Home
             Vector3 center = new Vector3(0f, 0.5f, 0f);
             float size = 7.5f;
 
+            if (layout != null && layout.TryGetBounds(out var bounds))
+            {
+                center = new Vector3(bounds.center.x, 0.5f, bounds.center.z);
+                float maxDim = Mathf.Max(bounds.size.x, bounds.size.z);
+                size = Mathf.Clamp(maxDim * 0.52f + 1.4f, 5.0f, 14.0f);
+            }
+
             cam.orthographic = true;
             cam.orthographicSize = size;
             cam.transform.rotation = Quaternion.Euler(35.264f, 45f, 0f);
@@ -449,30 +456,6 @@ namespace Homepad.Home
                 }
             }
 
-            // Default Setup: populate all rooms and items for modern apartment
-            PopulateDefaultHome();
-        }
-
-        public void PopulateDefaultHome()
-        {
-            layout.Rooms.Clear();
-            layout.Items.Clear();
-
-            service.EnsureRoom(RoomHint.Living);
-            service.EnsureRoom(RoomHint.Master);
-            service.EnsureRoom(RoomHint.Bedroom);
-            service.EnsureRoom(RoomHint.Bedroom2);
-            service.EnsureRoom(RoomHint.Kitchen);
-
-            // Default: Living Room Light, Living Room Heat, Electric Curtain
-            var lightDef = HomeItemDef.Find("light_living");
-            if (lightDef != null) PlaceFromCatalog(lightDef);
-
-            var heatDef = HomeItemDef.Find("heat_living");
-            if (heatDef != null) PlaceFromCatalog(heatDef);
-
-            var curtainDef = HomeItemDef.Find("curtain");
-            if (curtainDef != null) PlaceFromCatalog(curtainDef);
         }
 
         private void ApplySave(HomeSaveData data)

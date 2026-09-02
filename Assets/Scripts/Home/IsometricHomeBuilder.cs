@@ -14,36 +14,32 @@ namespace Homepad.Home
         private readonly Dictionary<string, HomeItemView> views = new Dictionary<string, HomeItemView>();
         private readonly List<Material> materials = new List<Material>();
 
-        [Header("Apartment Kit")]
-        [SerializeField] private GameObject modernApartmentPrefab;
         [SerializeField] private GameObject ceilingLampPrefab;
         [SerializeField] private GameObject wallHeaterPrefab;
         [SerializeField] private GameObject curtainPrefab;
 
         private Material floorMat;
         private Material wallMat;
-        private Material doorMat;
+        private Material wallCapMat;
+        private Material woodFrameMat;
         private Material glassMat;
-        private Material ceilingMat;
+        private Material plinthMat;
         private Material groundMat;
         private Material ghostMat;
+
         private readonly Dictionary<RoomHint, Material> roomFloors = new Dictionary<RoomHint, Material>();
-        private ApartmentLightRig apartmentRig;
+        private DioramaRoomRig dioramaRig;
+        private HomeLayout.CutawayView cutawayView;
 
         public IReadOnlyDictionary<string, HomeItemView> Views => views;
-        public ApartmentLightRig ApartmentRig => apartmentRig;
+        public DioramaRoomRig DioramaRig => dioramaRig;
 
         public void Initialize(HomeLayout homeLayout)
         {
             layout = homeLayout;
-#if UNITY_EDITOR
-            if (modernApartmentPrefab == null)
-            {
-                modernApartmentPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/ModernApartment.prefab");
-            }
-#endif
-
+            EnsureKitPrefabs();
             EnsureMaterials();
+
             if (geometryRoot == null)
             {
                 geometryRoot = new GameObject("Geometry").transform;
@@ -88,34 +84,27 @@ namespace Homepad.Home
         public void RefreshItemStates()
         {
             var manager = WallpadManager.Instance;
-            if (apartmentRig != null && manager != null)
+            if (dioramaRig != null)
             {
-                // Update Apartment Dynamic Lighting & Heating
+                dioramaRig.SetAllLights(false);
                 for (int i = 0; i < layout.Items.Count; i++)
                 {
                     var item = layout.Items[i];
                     if (item.Kind == HomeItemKind.Light)
                     {
                         var light = FindLight(manager, item.DeviceId);
-                        bool on = light != null && light.isOn;
-                        apartmentRig.SetLight(item.RoomHint, on);
+                        dioramaRig.SetLight(item.RoomHint, light != null && light.isOn);
                     }
                     else if (item.Kind == HomeItemKind.Heating)
                     {
                         var heat = FindHeat(manager, item.DeviceId);
-                        bool on = heat != null && heat.isPowered && !heat.isAwayMode;
-                        apartmentRig.SetHeating(item.RoomHint, on);
+                        dioramaRig.SetHeating(item.RoomHint, heat != null && heat.isPowered && !heat.isAwayMode);
                     }
                     else if (item.Kind == HomeItemKind.ElectricCurtain)
                     {
-                        apartmentRig.SetCurtain(item.CurtainOpen);
+                        dioramaRig.SetCurtain(item.RoomHint, item.CurtainOpen);
                     }
                 }
-            }
-
-            foreach (var pair in views)
-            {
-                ApplyItemState(pair.Value, manager);
             }
         }
 
@@ -137,15 +126,7 @@ namespace Homepad.Home
             Color c = valid ? new Color(0.35f, 0.75f, 1f, 0.45f) : new Color(1f, 0.3f, 0.3f, 0.35f);
             SetMatColor(ghostMat, c);
 
-            if (apartmentRig != null)
-            {
-                var anchor = apartmentRig.GetAnchor(def.Kind, def.RoomHint);
-                t.position = anchor != null ? anchor.position : Vector3.zero;
-            }
-            else
-            {
-                t.position = layout != null ? layout.CellCenter(cell, 1.0f) : Vector3.zero;
-            }
+            t.position = GhostPosition(def, cell, wallDir);
 
             t.localScale = new Vector3(0.5f, 0.5f, 0.5f);
             t.rotation = Quaternion.identity;
@@ -158,7 +139,7 @@ namespace Homepad.Home
 
         private void BuildGround()
         {
-            float size = 48f;
+            float size = 32f;
             var mesh = CreateQuadMesh(
                 new Vector3(-size, -0.05f, -size),
                 new Vector3(size, -0.05f, -size),
@@ -170,59 +151,58 @@ namespace Homepad.Home
 
         private void BuildRooms()
         {
-            apartmentRig = null;
+            EnsureKitPrefabs();
+            EnsureMaterials();
+            cutawayView = HomeLayout.CutawayView.FromCamera(CameraForward());
+            var output = HomeDioramaBuilder.Generate(layout, cutawayView.Forward);
 
-            if (modernApartmentPrefab != null)
+            foreach (var pair in output.RoomFloors)
             {
-                var aptGo = Object.Instantiate(modernApartmentPrefab, geometryRoot);
-                aptGo.name = "ModernApartment";
-                aptGo.transform.localPosition = Vector3.zero;
-                aptGo.transform.localRotation = Quaternion.identity;
-                apartmentRig = aptGo.GetComponent<ApartmentLightRig>();
-                return;
-            }
-
-            // Fallback: procedural boxes if modernApartmentPrefab is missing
-            var floors = new Dictionary<RoomHint, MeshAccum>();
-            var walls = new MeshAccum();
-            var doors = new MeshAccum();
-            var glass = new MeshAccum();
-            var ceilings = new MeshAccum();
-
-            foreach (var pair in layout.Cells)
-            {
-                var cell = pair.Value;
-                if (!cell.HasFloor) continue;
-                var room = layout.FindRoomById(cell.RoomId);
-                var hint = room != null ? room.Hint : RoomHint.Living;
-                if (!floors.TryGetValue(hint, out var floorAccum))
+                var mesh = pair.Value.ToMesh($"Floor_{pair.Key}");
+                if (mesh != null)
                 {
-                    floorAccum = new MeshAccum();
-                    floors[hint] = floorAccum;
-                }
-
-                AddFloor(floorAccum, pair.Key);
-                if (!layout.Cutaway) AddCeiling(ceilings, pair.Key);
-
-                for (int d = 0; d < 4; d++)
-                {
-                    if (cell.Windows[d]) AddWindow(glass, walls, pair.Key, d);
-                    else if (cell.Doors[d]) AddDoorFrame(doors, pair.Key, d);
-                    else if (cell.Walls[d]) AddWall(walls, pair.Key, d, 0f, HomeLayout.WallHeight);
+                    var mat = RoomFloor(pair.Key);
+                    CreateMeshObject($"Floor_{pair.Key}", geometryRoot, mesh, mat, false);
                 }
             }
 
-            foreach (var pair in floors)
-            {
-                var mesh = pair.Value.ToMesh();
-                if (mesh == null) continue;
-                var mat = RoomFloor(pair.Key);
-                CreateMeshObject($"Floor_{pair.Key}", geometryRoot, mesh, mat, false);
-            }
+            CreateMeshObject("Walls", geometryRoot, output.WallData.ToMesh("Walls"), wallMat, true);
+            CreateMeshObject("WallCaps", geometryRoot, output.WallCapData.ToMesh("WallCaps"), wallCapMat, false);
+            CreateMeshObject("DoorFrames", geometryRoot, output.FrameData.ToMesh("DoorFrames"), woodFrameMat, false);
+            CreateMeshObject("Glass", geometryRoot, output.GlassData.ToMesh("Glass"), glassMat, false);
+            CreateMeshObject("Plinth", geometryRoot, output.SkirtingData.ToMesh("Plinth"), plinthMat, false);
 
-            CreateMeshObject("Walls", geometryRoot, walls.ToMesh(), wallMat, false);
-            CreateMeshObject("Doors", geometryRoot, doors.ToMesh(), doorMat, false);
-            CreateMeshObject("Glass", geometryRoot, glass.ToMesh(), glassMat, false);
+            var rigGo = new GameObject("DioramaRoomRig");
+            rigGo.transform.SetParent(geometryRoot, false);
+            dioramaRig = rigGo.AddComponent<DioramaRoomRig>();
+
+            var anchorsRoot = new GameObject("Anchors");
+            anchorsRoot.transform.SetParent(rigGo.transform, false);
+
+            foreach (var room in layout.Rooms)
+            {
+                Vector3 roomCenter = layout.RoomCenter(room);
+                layout.TryFindPerimeter(room, cutawayView.PrimaryBack, out var wallCell, out var wallDir);
+                var ceilAnchor = CreateAnchor(anchorsRoot.transform, $"Anchor_Ceil_{room.Hint}", layout.RoomCenter(room, HomeDioramaBuilder.HighWallHeight - 0.18f));
+                var wallAnchor = CreateAnchor(anchorsRoot.transform, $"Anchor_Wall_{room.Hint}", layout.WallCenter(wallCell, wallDir, 1.05f));
+                var floorAnchor = CreateAnchor(anchorsRoot.transform, $"Anchor_Floor_{room.Hint}", new Vector3(roomCenter.x, 0.4f, roomCenter.z));
+
+                dioramaRig.RegisterFixture(new DioramaRoomRig.RoomFixture
+                {
+                    hint = room.Hint,
+                    ceilingAnchor = ceilAnchor,
+                    wallAnchor = wallAnchor,
+                    floorAnchor = floorAnchor
+                });
+            }
+        }
+
+        private Transform CreateAnchor(Transform parent, string name, Vector3 pos)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.position = pos;
+            return go.transform;
         }
 
         private void CreateItemVisual(PlacedItem item)
@@ -230,85 +210,169 @@ namespace Homepad.Home
             var go = new GameObject($"Item_{item.DisplayName}_{item.InstanceId}");
             go.transform.SetParent(itemRoot, false);
             var view = go.AddComponent<HomeItemView>();
+            Transform visual = null;
+            Transform curtainLeaf = null;
 
-            if (apartmentRig != null)
+            switch (item.Kind)
             {
-                var anchor = apartmentRig.GetAnchor(item.Kind, item.RoomHint);
-                go.transform.position = anchor != null ? anchor.position : Vector3.zero;
-            }
-            else
-            {
-                go.transform.position = layout != null ? layout.CellCenter(item.Cell, 1.0f) : Vector3.zero;
+                case HomeItemKind.Light:
+                    visual = SpawnLight(go.transform, item);
+                    break;
+                case HomeItemKind.Heating:
+                    visual = SpawnHeater(go.transform, item);
+                    break;
+                case HomeItemKind.ElectricCurtain:
+                    curtainLeaf = SpawnCurtain(go.transform, item);
+                    visual = curtainLeaf;
+                    break;
+                default:
+                    var anchor = dioramaRig != null ? dioramaRig.GetAnchor(item.Kind, item.RoomHint) : null;
+                    go.transform.position = anchor != null ? anchor.position : layout.CellCenter(item.Cell, 1.0f);
+                    break;
             }
 
             var box = go.AddComponent<BoxCollider>();
             box.size = new Vector3(0.8f, 0.8f, 0.8f);
-
-            view.Bind(item, null, null);
+            view.Bind(item, visual, curtainLeaf);
             views[item.InstanceId] = view;
         }
 
-        private void ApplyItemState(HomeItemView view, WallpadManager manager)
+        private Transform SpawnLight(Transform parent, PlacedItem item)
         {
-            if (view == null || view.Item == null) return;
-            if (view.Visual == null) return;
-            var renderer = view.Visual.GetComponent<MeshRenderer>();
-            if (renderer == null) return;
-            var item = view.Item;
+            var room = layout.FindRoom(item.RoomHint);
+            parent.position = room != null
+                ? layout.RoomCenter(room, HomeDioramaBuilder.HighWallHeight - 0.18f)
+                : layout.CellCenter(item.Cell, HomeDioramaBuilder.HighWallHeight - 0.18f);
+            parent.rotation = Quaternion.identity;
 
-            Color color = new Color(0.65f, 0.68f, 0.75f);
-            switch (item.Kind)
-            {
-                case HomeItemKind.Light:
-                    var light = FindLight(manager, item.DeviceId);
-                    bool lightOn = light != null && light.isOn;
-                    color = lightOn ? new Color(1f, 0.94f, 0.55f) : new Color(0.45f, 0.48f, 0.55f);
-                    var bulbLight = view.GetComponentInChildren<Light>(true);
-                    if (bulbLight != null) bulbLight.enabled = lightOn;
-                    break;
-                case HomeItemKind.Heating:
-                    var room = FindHeat(manager, item.DeviceId);
-                    color = room != null && room.isPowered
-                        ? (room.isAwayMode ? new Color(0.45f, 0.70f, 1.0f) : new Color(1.0f, 0.45f, 0.22f))
-                        : new Color(0.38f, 0.40f, 0.46f);
-                    break;
-                case HomeItemKind.Gas:
-                    bool open = manager != null && manager.Gas.isOpen;
-                    color = open ? new Color(0.95f, 0.32f, 0.28f) : new Color(0.35f, 0.82f, 0.48f);
-                    break;
-                case HomeItemKind.Vent:
-                    color = manager != null && manager.Ventilation.isPowered
-                        ? new Color(0.4f, 0.78f, 1.0f)
-                        : new Color(0.45f, 0.48f, 0.55f);
-                    break;
-                case HomeItemKind.Elevator:
-                    color = manager != null && manager.Elevator.isCalled
-                        ? new Color(0.38f, 0.65f, 1.0f)
-                        : new Color(0.52f, 0.55f, 0.62f);
-                    break;
-                case HomeItemKind.ElectricCurtain:
-                    color = new Color(0.85f, 0.78f, 0.68f);
-                    break;
-            }
+            var inst = SpawnKit(ceilingLampPrefab, parent, "CeilingLamp");
+            var light = inst.GetComponentInChildren<Light>(true);
+            if (light == null) light = inst.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.94f, 0.84f);
+            light.range = 6.5f;
+            light.shadows = LightShadows.Soft;
+            light.enabled = false;
 
-            if (renderer.material != null)
+            MeshRenderer shade = null;
+            var renderers = inst.GetComponentsInChildren<MeshRenderer>(true);
+            for (int i = 0; i < renderers.Length; i++)
             {
-                renderer.material.color = color;
-                if (renderer.material.HasProperty("_EmissionColor"))
+                if (renderers[i].name.IndexOf("shade", System.StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    renderer.material.SetColor("_EmissionColor", color * 0.8f);
+                    shade = renderers[i];
+                    break;
                 }
             }
+
+            if (shade == null && renderers.Length > 0) shade = renderers[0];
+
+            dioramaRig?.RegisterFixture(new DioramaRoomRig.RoomFixture
+            {
+                hint = item.RoomHint,
+                roomLight = light,
+                lampRenderer = shade,
+                ceilingAnchor = parent
+            });
+            return inst.transform;
         }
 
-        private Transform SpawnKitOrPrimitive(Transform parent, GameObject prefab, PrimitiveType fallback, Vector3 scale)
+        private Transform SpawnHeater(Transform parent, PlacedItem item)
         {
-            if (prefab == null) return CreatePrimitive(parent, fallback, scale);
-            var inst = Object.Instantiate(prefab, parent, false);
-            inst.transform.localPosition = Vector3.zero;
-            inst.transform.localRotation = Quaternion.identity;
-            inst.transform.localScale = Vector3.one;
+            parent.position = layout.WallCenter(item.Cell, item.WallDir, 0.52f);
+            parent.rotation = Quaternion.LookRotation(-HomeLayout.DirNormal(item.WallDir));
+
+            var inst = SpawnKit(wallHeaterPrefab, parent, "WallHeater");
+            var glow = inst.GetComponentInChildren<HeaterGlow>(true);
+            var heatLight = inst.GetComponentInChildren<Light>(true);
+            if (heatLight == null)
+            {
+                heatLight = inst.AddComponent<Light>();
+                heatLight.type = LightType.Point;
+                heatLight.color = new Color(1f, 0.42f, 0.14f);
+                heatLight.range = 4.5f;
+                heatLight.intensity = 1.6f;
+                heatLight.shadows = LightShadows.None;
+            }
+
+            heatLight.enabled = false;
+            if (glow != null) glow.SetOn(false);
+
+            dioramaRig?.RegisterFixture(new DioramaRoomRig.RoomFixture
+            {
+                hint = item.RoomHint,
+                heaterLight = heatLight,
+                heaterGlow = glow,
+                wallAnchor = parent
+            });
             return inst.transform;
+        }
+
+        private Transform SpawnCurtain(Transform parent, PlacedItem item)
+        {
+            parent.position = layout.WallCenter(item.Cell, item.WallDir, 1.2f);
+            parent.rotation = Quaternion.LookRotation(-HomeLayout.DirNormal(item.WallDir));
+
+            var inst = SpawnKit(curtainPrefab, parent, "Curtain");
+            var cloth = inst.GetComponentInChildren<CurtainCloth>(true);
+            if (cloth != null)
+            {
+                cloth.Initialize();
+                cloth.SetOpen(item.CurtainOpen);
+            }
+
+            dioramaRig?.RegisterFixture(new DioramaRoomRig.RoomFixture
+            {
+                hint = item.RoomHint,
+                curtainCloth = cloth,
+                wallAnchor = parent
+            });
+            return inst.transform;
+        }
+
+        private static GameObject SpawnKit(GameObject prefab, Transform parent, string fallbackName)
+        {
+            if (prefab != null)
+            {
+                var inst = Object.Instantiate(prefab, parent, false);
+                inst.transform.localPosition = Vector3.zero;
+                inst.transform.localRotation = Quaternion.identity;
+                var colliders = inst.GetComponentsInChildren<Collider>(true);
+                for (int i = 0; i < colliders.Length; i++) Object.Destroy(colliders[i]);
+                return inst;
+            }
+
+            var go = new GameObject(fallbackName);
+            go.transform.SetParent(parent, false);
+            return go;
+        }
+
+        private void EnsureKitPrefabs()
+        {
+#if UNITY_EDITOR
+            if (ceilingLampPrefab == null)
+                ceilingLampPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/CeilingLamp.prefab");
+            if (wallHeaterPrefab == null)
+                wallHeaterPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/WallHeater.prefab");
+            if (curtainPrefab == null)
+                curtainPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/Curtain.prefab");
+#endif
+        }
+
+        private static Vector3 CameraForward()
+        {
+            var cam = Camera.main;
+            return cam != null ? cam.transform.forward : new Vector3(1f, -1f, 1f);
+        }
+
+        private Vector3 GhostPosition(HomeItemDef def, Vector2Int cell, int wallDir)
+        {
+            if (layout == null) return Vector3.zero;
+            if (def != null && (def.Kind == HomeItemKind.ElectricCurtain || def.Surface == Surface.Wall))
+                return layout.WallCenter(cell, wallDir, 1.05f);
+            if (def != null && def.Surface == Surface.Ceiling)
+                return layout.CellCenter(cell, HomeDioramaBuilder.HighWallHeight - 0.18f);
+            return layout.CellCenter(cell, 0.45f);
         }
 
         private static LightState FindLight(WallpadManager manager, int id)
@@ -333,44 +397,50 @@ namespace Homepad.Home
             return null;
         }
 
-        private Transform CreatePrimitive(Transform parent, PrimitiveType type, Vector3 scale)
-        {
-            var go = GameObject.CreatePrimitive(type);
-            go.transform.SetParent(parent, false);
-            go.transform.localPosition = Vector3.zero;
-            go.transform.localScale = scale;
-            Object.Destroy(go.GetComponent<Collider>());
-            var r = go.GetComponent<MeshRenderer>();
-            r.sharedMaterial = wallMat;
-            return go.transform;
-        }
-
         private void EnsureMaterials()
         {
             if (floorMat != null) return;
-            floorMat = CreateMat("Mat_Floor", new Color(0.24f, 0.28f, 0.35f));
-            wallMat = CreateMat("Mat_Wall", new Color(0.88f, 0.90f, 0.94f));
-            doorMat = CreateMat("Mat_Door", new Color(0.55f, 0.42f, 0.32f));
-            glassMat = CreateMat("Mat_Glass", new Color(0.55f, 0.75f, 0.95f, 0.35f));
-            ceilingMat = CreateMat("Mat_Ceiling", new Color(0.92f, 0.93f, 0.96f));
-            groundMat = CreateMat("Mat_Ground", new Color(0.06f, 0.07f, 0.10f));
-            ghostMat = CreateMat("Mat_Ghost", new Color(0.35f, 0.75f, 1f, 0.45f));
+            var litShader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
 
-            roomFloors[RoomHint.Living] = CreateMat("Floor_Living", new Color(0.26f, 0.30f, 0.38f));
-            roomFloors[RoomHint.Master] = CreateMat("Floor_Master", new Color(0.32f, 0.28f, 0.34f));
-            roomFloors[RoomHint.Bedroom] = CreateMat("Floor_Bedroom", new Color(0.25f, 0.32f, 0.30f));
-            roomFloors[RoomHint.Bedroom2] = CreateMat("Floor_Bedroom2", new Color(0.28f, 0.30f, 0.34f));
-            roomFloors[RoomHint.Kitchen] = CreateMat("Floor_Kitchen", new Color(0.30f, 0.30f, 0.26f));
-            roomFloors[RoomHint.Entrance] = CreateMat("Floor_Entrance", new Color(0.22f, 0.24f, 0.28f));
+            // Volumetric Walls: Warm Scandinavian Cream White
+            wallMat = CreateMat("Mat_Diorama_Wall", litShader, new Color(0.97f, 0.95f, 0.92f), 0.20f);
+            // Wall Caps: Light Wood Trim
+            wallCapMat = CreateMat("Mat_Diorama_WallCap", litShader, new Color(0.88f, 0.82f, 0.74f), 0.35f);
+            // Door & Window Frames: Natural Oak Wood
+            woodFrameMat = CreateMat("Mat_Diorama_WoodFrame", litShader, new Color(0.72f, 0.54f, 0.38f), 0.45f);
+            // Skirting Plinth: Sleek Dark Slate Base
+            plinthMat = CreateMat("Mat_Diorama_Plinth", litShader, new Color(0.24f, 0.26f, 0.30f), 0.30f);
+            // Ground Plane: Deep Slate
+            groundMat = CreateMat("Mat_Diorama_Ground", litShader, new Color(0.08f, 0.09f, 0.12f), 0.15f);
+            // Ghost Placement
+            ghostMat = CreateMat("Mat_Diorama_Ghost", litShader, new Color(0.35f, 0.75f, 1f, 0.45f), 0.5f);
+
+            // Transparent Glass
+            glassMat = CreateMat("Mat_Diorama_Glass", litShader, new Color(0.65f, 0.82f, 0.95f, 0.35f), 0.92f);
+            glassMat.SetFloat("_Surface", 1);
+            glassMat.SetFloat("_Blend", 0);
+            glassMat.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+            glassMat.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+            glassMat.SetInt("_ZWrite", 0);
+            glassMat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            glassMat.renderQueue = (int)RenderQueue.Transparent;
+
+            floorMat = CreateMat("Mat_Floor_Default", litShader, new Color(0.92f, 0.82f, 0.70f), 0.35f);
+
+            // Curated Room Floor Palettes (Animal Crossing / Warm Smart Home)
+            roomFloors[RoomHint.Living] = CreateMat("Floor_Living_Oak", litShader, new Color(0.94f, 0.82f, 0.68f), 0.38f);      // Warm Oak Parquet
+            roomFloors[RoomHint.Master] = CreateMat("Floor_Master_Walnut", litShader, new Color(0.88f, 0.76f, 0.62f), 0.35f);   // Cozy Walnut
+            roomFloors[RoomHint.Bedroom] = CreateMat("Floor_Bedroom_Birch", litShader, new Color(0.96f, 0.86f, 0.74f), 0.35f);  // Light Birch
+            roomFloors[RoomHint.Bedroom2] = CreateMat("Floor_Bedroom2_Honey", litShader, new Color(0.92f, 0.80f, 0.66f), 0.35f);// Warm Honey Wood
+            roomFloors[RoomHint.Kitchen] = CreateMat("Floor_Kitchen_Tile", litShader, new Color(0.94f, 0.94f, 0.92f), 0.55f);   // Clean Marble Tile
+            roomFloors[RoomHint.Entrance] = CreateMat("Floor_Entrance_Stone", litShader, new Color(0.42f, 0.45f, 0.50f), 0.35f);// Dark Slate
         }
 
-        private Material CreateMat(string name, Color color)
+        private Material CreateMat(string name, Shader shader, Color color, float smoothness)
         {
-            var shader = Shader.Find("Universal Render Pipeline/Lit")
-                         ?? Shader.Find("Standard")
-                         ?? Shader.Find("Hidden/InternalErrorShader");
             var mat = new Material(shader) { name = name };
             SetMatColor(mat, color);
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", smoothness);
             materials.Add(mat);
             return mat;
         }
@@ -423,95 +493,6 @@ namespace Homepad.Home
             rend.receiveShadows = true;
             if (collider) go.AddComponent<MeshCollider>().sharedMesh = mesh;
             return go;
-        }
-
-        private void AddFloor(MeshAccum accum, Vector2Int cell)
-        {
-            Vector3 c = layout.CellCenter(cell, 0f);
-            float h = HomeLayout.CellSize * 0.5f;
-            accum.AddQuad(
-                new Vector3(c.x - h, 0f, c.z - h),
-                new Vector3(c.x + h, 0f, c.z - h),
-                new Vector3(c.x + h, 0f, c.z + h),
-                new Vector3(c.x - h, 0f, c.z + h),
-                Vector3.up);
-        }
-
-        private void AddCeiling(MeshAccum accum, Vector2Int cell)
-        {
-            Vector3 c = layout.CellCenter(cell, HomeLayout.WallHeight);
-            float h = HomeLayout.CellSize * 0.5f;
-            accum.AddQuad(
-                new Vector3(c.x - h, HomeLayout.WallHeight, c.z + h),
-                new Vector3(c.x + h, HomeLayout.WallHeight, c.z + h),
-                new Vector3(c.x + h, HomeLayout.WallHeight, c.z - h),
-                new Vector3(c.x - h, HomeLayout.WallHeight, c.z - h),
-                Vector3.down);
-        }
-
-        private void AddWall(MeshAccum accum, Vector2Int cell, int dir, float y0, float y1)
-        {
-            Vector3 c = layout.CellCenter(cell, 0f);
-            float h = HomeLayout.CellSize * 0.5f;
-            Vector3 a, b;
-            switch (dir)
-            {
-                case 0: a = new Vector3(c.x - h, 0f, c.z + h); b = new Vector3(c.x + h, 0f, c.z + h); break;
-                case 1: a = new Vector3(c.x + h, 0f, c.z + h); b = new Vector3(c.x + h, 0f, c.z - h); break;
-                case 2: a = new Vector3(c.x + h, 0f, c.z - h); b = new Vector3(c.x - h, 0f, c.z - h); break;
-                default: a = new Vector3(c.x - h, 0f, c.z - h); b = new Vector3(c.x - h, 0f, c.z + h); break;
-            }
-
-            Vector3 n = Vector3.Cross(Vector3.up, b - a).normalized;
-            accum.AddQuad(
-                new Vector3(a.x, y0, a.z),
-                new Vector3(b.x, y0, b.z),
-                new Vector3(b.x, y1, b.z),
-                new Vector3(a.x, y1, a.z),
-                n);
-        }
-
-        private void AddWindow(MeshAccum glass, MeshAccum walls, Vector2Int cell, int dir)
-        {
-            AddWall(walls, cell, dir, 0f, 0.9f);
-            AddWall(walls, cell, dir, 2.0f, HomeLayout.WallHeight);
-            AddWall(glass, cell, dir, 0.9f, 2.0f);
-        }
-
-        private void AddDoorFrame(MeshAccum doors, Vector2Int cell, int dir)
-        {
-            AddWall(doors, cell, dir, 2.0f, HomeLayout.WallHeight);
-        }
-
-        private sealed class MeshAccum
-        {
-            private readonly List<Vector3> verts = new List<Vector3>();
-            private readonly List<Vector3> norms = new List<Vector3>();
-            private readonly List<Vector2> uvs = new List<Vector2>();
-            private readonly List<int> tris = new List<int>();
-
-            public void AddQuad(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Vector3 n)
-            {
-                int start = verts.Count;
-                verts.Add(p0); verts.Add(p1); verts.Add(p2); verts.Add(p3);
-                norms.Add(n); norms.Add(n); norms.Add(n); norms.Add(n);
-                uvs.Add(new Vector2(0f, 0f)); uvs.Add(new Vector2(1f, 0f));
-                uvs.Add(new Vector2(1f, 1f)); uvs.Add(new Vector2(0f, 1f));
-                tris.Add(start + 0); tris.Add(start + 1); tris.Add(start + 2);
-                tris.Add(start + 0); tris.Add(start + 2); tris.Add(start + 3);
-            }
-
-            public Mesh ToMesh()
-            {
-                if (verts.Count == 0) return null;
-                var mesh = new Mesh { name = "Procedural" };
-                mesh.SetVertices(verts);
-                mesh.SetNormals(norms);
-                mesh.SetUVs(0, uvs);
-                mesh.SetTriangles(tris, 0);
-                mesh.RecalculateBounds();
-                return mesh;
-            }
         }
     }
 }
