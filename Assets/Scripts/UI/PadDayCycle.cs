@@ -1,4 +1,5 @@
 using System;
+using Homepad.Core;
 using Homepad.Home;
 using UnityEngine;
 using UnityEngine.UI;
@@ -56,24 +57,62 @@ namespace Homepad.UI
             new Color(0.14f, 0.08f, 0.07f),
             new Color(0.90f, 0.35f, 0.18f, 0.14f));
 
-        private static readonly Keyframe[] Keys =
-        {
-            new Keyframe(0.00f, Night),
-            new Keyframe(5.00f, Night),
-            new Keyframe(6.20f, Dawn),
-            new Keyframe(7.80f, Day),
-            new Keyframe(16.00f, Day),
-            new Keyframe(17.80f, Dusk),
-            new Keyframe(19.80f, Night),
-            new Keyframe(24.00f, Night)
-        };
+        private Keyframe[] keys;
+        private int lastCalculatedDay = -1;
 
         public DayPeriod Period { get; private set; }
+        public SolarCalculator.SolarTimes SolarTimes { get; private set; }
 
         private void Awake()
         {
             if (targetCamera == null) targetCamera = Camera.main;
+            if (LocationProvider.Instance != null)
+            {
+                LocationProvider.Instance.OnLocationChanged += RebuildSolarKeyframes;
+            }
+
+            RebuildSolarKeyframes();
             Apply(Evaluate(CurrentHour()));
+        }
+
+        private void OnDestroy()
+        {
+            if (LocationProvider.Instance != null)
+            {
+                LocationProvider.Instance.OnLocationChanged -= RebuildSolarKeyframes;
+            }
+        }
+
+        public void RebuildSolarKeyframes()
+        {
+            var now = DateTime.Now;
+            double lat = LocationProvider.Instance != null ? LocationProvider.Instance.Latitude : LocationProvider.DefaultLat;
+            double lng = LocationProvider.Instance != null ? LocationProvider.Instance.Longitude : LocationProvider.DefaultLng;
+
+            SolarTimes = SolarCalculator.Calculate(now, lat, lng);
+            lastCalculatedDay = now.DayOfYear;
+
+            float dawn = SolarTimes.DawnHour;
+            float sunrise = SolarTimes.SunriseHour;
+            float sunset = SolarTimes.SunsetHour;
+            float dusk = SolarTimes.DuskHour;
+
+            float dawnStart = Mathf.Max(0f, dawn - 0.6f);
+            float dayFull = sunrise + 0.6f;
+            float duskStart = Mathf.Max(dayFull, sunset - 0.7f);
+            float nightFull = dusk + 0.5f;
+
+            keys = new Keyframe[]
+            {
+                new Keyframe(0.00f, Night),
+                new Keyframe(dawnStart, Night),
+                new Keyframe(dawn, Dawn),
+                new Keyframe(dayFull, Day),
+                new Keyframe(duskStart, Day),
+                new Keyframe(sunset, Dusk),
+                new Keyframe(nightFull, Night),
+                new Keyframe(24.00f, Night)
+            };
         }
 
         private void LateUpdate()
@@ -88,13 +127,18 @@ namespace Homepad.UI
             return now.Hour + now.Minute / 60f + now.Second / 3600f;
         }
 
-        private static Look Evaluate(float hour)
+        private Look Evaluate(float hour)
         {
-            hour = Mathf.Repeat(hour, 24f);
-            for (int i = 0; i < Keys.Length - 1; i++)
+            if (keys == null || DateTime.Now.DayOfYear != lastCalculatedDay)
             {
-                var a = Keys[i];
-                var b = Keys[i + 1];
+                RebuildSolarKeyframes();
+            }
+
+            hour = Mathf.Repeat(hour, 24f);
+            for (int i = 0; i < keys.Length - 1; i++)
+            {
+                var a = keys[i];
+                var b = keys[i + 1];
                 if (hour < a.hour || hour > b.hour) continue;
                 float span = b.hour - a.hour;
                 float t = span <= 0.0001f ? 0f : (hour - a.hour) / span;
@@ -105,11 +149,12 @@ namespace Homepad.UI
             return Night;
         }
 
-        private static DayPeriod Classify(float hour)
+        private DayPeriod Classify(float hour)
         {
-            if (hour >= 5.0f && hour < 7.8f) return DayPeriod.Dawn;
-            if (hour >= 7.8f && hour < 16.0f) return DayPeriod.Day;
-            if (hour >= 16.0f && hour < 19.8f) return DayPeriod.Dusk;
+            if (keys == null || keys.Length == 0) return DayPeriod.Day;
+            if (hour >= SolarTimes.DawnHour && hour < SolarTimes.SunriseHour + 0.4f) return DayPeriod.Dawn;
+            if (hour >= SolarTimes.SunriseHour + 0.4f && hour < SolarTimes.SunsetHour - 0.4f) return DayPeriod.Day;
+            if (hour >= SolarTimes.SunsetHour - 0.4f && hour < SolarTimes.DuskHour + 0.3f) return DayPeriod.Dusk;
             return DayPeriod.Night;
         }
 
