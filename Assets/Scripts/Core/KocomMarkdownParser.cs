@@ -8,15 +8,27 @@ namespace Homepad.Core
 {
     public static class KocomMarkdownParser
     {
+        public static string UserMarkdownPath =>
+            Path.Combine(Application.persistentDataPath, "kocom-hex.md");
+
         public static string[] GetSearchPaths()
         {
+#if UNITY_EDITOR
             return new string[]
             {
                 Path.Combine(Application.dataPath, "../Docs/kocom-hex.md"),
-                Path.Combine(Application.streamingAssetsPath, "kocom-hex.md"),
                 Path.Combine(Application.dataPath, "Docs/kocom-hex.md"),
-                Path.Combine(Application.persistentDataPath, "kocom-hex.md")
+                Path.Combine(Application.streamingAssetsPath, "kocom-hex.md"),
+                UserMarkdownPath
             };
+#else
+            EnsurePersistentCopy();
+            return new string[]
+            {
+                UserMarkdownPath,
+                Path.Combine(Application.streamingAssetsPath, "kocom-hex.md")
+            };
+#endif
         }
 
         public static string FindMarkdownPath()
@@ -40,24 +52,89 @@ namespace Homepad.Core
 
         public static List<HexPreset> LoadFromDisk()
         {
-            string path = FindMarkdownPath();
-            if (string.IsNullOrEmpty(path))
+            string content = LoadMarkdownText(out string source);
+            if (string.IsNullOrEmpty(content))
             {
-                Debug.LogWarning("[KocomMarkdownParser] kocom-hex.md 파일을 찾지 못했습니다. 기본 내장 프리셋을 사용합니다.");
+                Debug.LogError("[KocomMarkdownParser] kocom-hex.md 를 찾지 못했습니다.");
                 return null;
             }
 
+            var list = ParseMarkdown(content);
+            Debug.Log($"[KocomMarkdownParser] '{source}' 에서 {list.Count}개의 패킷 프리셋을 성공적으로 로드했습니다.");
+            return list;
+        }
+
+        public static string LoadMarkdownText(out string source)
+        {
+            string path = FindMarkdownPath();
+            if (!string.IsNullOrEmpty(path))
+            {
+                try
+                {
+                    source = path;
+                    return File.ReadAllText(path, System.Text.Encoding.UTF8);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[KocomMarkdownParser] 마크다운 로드 실패: {ex.Message}");
+                }
+            }
+
+            var baked = LoadBakedMarkdown();
+            if (!string.IsNullOrEmpty(baked))
+            {
+                source = "Resources/kocom-hex";
+                return baked;
+            }
+
+            source = null;
+            return null;
+        }
+
+        static string LoadBakedMarkdown()
+        {
+            var embedded = Resources.Load<TextAsset>("kocom-hex");
+            if (embedded != null && !string.IsNullOrWhiteSpace(embedded.text))
+            {
+                return embedded.text;
+            }
+
+            return null;
+        }
+
+        static void EnsurePersistentCopy()
+        {
             try
             {
-                string content = File.ReadAllText(path, System.Text.Encoding.UTF8);
-                var list = ParseMarkdown(content);
-                Debug.Log($"[KocomMarkdownParser] '{path}' 에서 {list.Count}개의 패킷 프리셋을 성공적으로 로드했습니다.");
-                return list;
+                if (File.Exists(UserMarkdownPath))
+                {
+                    return;
+                }
+
+                string baked = null;
+                var streaming = Path.Combine(Application.streamingAssetsPath, "kocom-hex.md");
+                if (File.Exists(streaming))
+                {
+                    baked = File.ReadAllText(streaming, System.Text.Encoding.UTF8);
+                }
+
+                if (string.IsNullOrEmpty(baked))
+                {
+                    baked = LoadBakedMarkdown();
+                }
+
+                if (string.IsNullOrEmpty(baked))
+                {
+                    return;
+                }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(UserMarkdownPath));
+                File.WriteAllText(UserMarkdownPath, baked, System.Text.Encoding.UTF8);
+                Debug.Log($"[KocomMarkdownParser] 실행 중 수정용 복사본을 만들었습니다: {UserMarkdownPath}");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[KocomMarkdownParser] 마크다운 로드 실패: {ex.Message}");
-                return null;
+                Debug.LogWarning($"[KocomMarkdownParser] persistent 복사 실패: {ex.Message}");
             }
         }
 

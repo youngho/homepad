@@ -449,7 +449,8 @@ namespace Homepad.UI
         {
             KocomHexPresets.Reload();
             PopulatePresetList(currentCategory);
-            AppendLog($"<color=#5CAE7C>[MD 로드 완료] kocom-hex.md 에서 {KocomHexPresets.AllPresets.Count}개 프리셋 로드됨</color>", false);
+            string path = KocomMarkdownParser.FindMarkdownPath() ?? KocomMarkdownParser.UserMarkdownPath;
+            AppendLog($"<color=#5CAE7C>[MD 로드 완료] {path} 에서 {KocomHexPresets.AllPresets.Count}개 프리셋 로드됨</color>", false);
         }
 
         private void PopulatePresetList(HexCategory category)

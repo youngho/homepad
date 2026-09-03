@@ -11,7 +11,7 @@ namespace Homepad.Editor
         public static void ValidatePresets()
         {
             string mdPath = KocomMarkdownParser.FindMarkdownPath();
-            Debug.Log($"<color=#55AAFF>[KocomHexValidator] 마크다운 파일 탐색: {(string.IsNullOrEmpty(mdPath) ? "없음 (내장 프리셋 사용)" : mdPath)}</color>");
+            Debug.Log($"<color=#55AAFF>[KocomHexValidator] 마크다운 파일 탐색: {(string.IsNullOrEmpty(mdPath) ? "없음" : mdPath)}</color>");
 
             KocomHexPresets.Reload();
             var presets = KocomHexPresets.AllPresets;
