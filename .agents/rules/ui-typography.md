@@ -1,0 +1,51 @@
+---
+trigger: always_on
+description: 월패드 UI 폰트는 Pretendard Regular/SemiBold만 쓰고, 가짜 Bold·작은 베이크·Best Fit을 쓰지 않는다.
+---
+
+# 월패드 UI 타이포그래피
+
+벽면 월패드다. 한글이 번지거나 아른거리면 실패다. 새 폰트를 고르지 마라.
+
+## 쓸 자산 (이것만)
+
+- 본문: `Assets/Fonts/Pretendard-Regular.otf` (guid `c1a2b3c4d5e64f708192a3b4c5d6e7f8`)
+- 제목/버튼/강조: `Assets/Fonts/Pretendard-SemiBold.otf` (guid `d2b3c4d5e6f7481920a1b2c3d4e5f607`)
+- 임포터는 건드리지 마라: `fontSize: 36`, `fontRenderingMode: 1` (Hinted Smooth), `characterPadding: 4`
+
+글리프는 36px로 구운 뒤 화면에서는 그보다 **작게** 그린다. 16px로 구워 키우면 번진다.
+
+## 금지
+
+- Arial, LegacyRuntime, Noto, 새 TTF/OTF 추가
+- `FontStyle.Bold` / `m_FontStyle: 1` — Regular 위에 굵기를 합성해서 하얗게 번진다
+- Best Fit (`m_BestFit: 1`) — 크기가 바뀌며 아른거린다
+- `Resources.GetBuiltinResource<Font>(...)` 로 UI 텍스트 만들기
+
+```csharp
+// BAD
+txt.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+txt.fontSize = 12;
+txt.fontStyle = FontStyle.Bold;
+
+// GOOD — 씬/프리팹 원본에서 물려받거나 SemiBold 파일을 넣고 Normal
+title.font = pretendardSemiBold;
+title.fontSize = 22;
+title.fontStyle = FontStyle.Normal;
+```
+
+## 크기 (노안 기준, 본문 최소 18, 캡션도 16 미만 금지)
+
+| 역할 | 폰트 | 크기 |
+|---|---|---|
+| 화면 큰 제목 | SemiBold | 28–32 |
+| 패널/카드 제목 | SemiBold | 22–26 |
+| 버튼 | SemiBold | 18–22 |
+| 본문/상태 | Regular | 18–22 |
+| HEX/보조 | Regular | 16–18 |
+
+굵게 보이게 하려면 SemiBold 파일을 쓰고 `fontStyle`은 Normal이다.
+
+HUD 텍스트는 씬/프리팹의 기존 Text를 복제한다. 목록은 슬롯을 Instantiate하고 폰트는 원본에서 물려받는다. 캔버스 Pixel Perfect는 켠다.
+
+작업 후 `FontStyle.Bold`, Arial/LegacyRuntime, fontSize < 16, Best Fit 이 생기면 실패다.
