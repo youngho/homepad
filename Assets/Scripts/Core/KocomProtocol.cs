@@ -36,13 +36,6 @@ namespace Homepad.Core
         public const byte HeatPowerOff1 = 0x01;
         public const byte HeatAway0 = 0x11;
         public const byte HeatAway1 = 0x01;
-        public const byte VentPowerOn = 0x11;
-        public const byte VentPowerOff = 0x00;
-        public const byte VentPowerOffAlt = 0x10;
-        public const byte VentStatus = 0x03;
-        public const byte VentFanLow = 0x40;
-        public const byte VentFanMedium = 0x80;
-        public const byte VentFanHigh = 0xC0;
 
         public struct Frame
         {
@@ -144,35 +137,7 @@ namespace Homepad.Core
 
         public static byte[] CreateVentilationPacket(VentilationSpeed speed)
         {
-            byte power = speed == VentilationSpeed.Off ? VentPowerOff : VentPowerOn;
-            byte fan = FanByteFromSpeed(speed);
-            byte[] value = { power, VentStatus, fan, 0, 0, 0, 0, 0 };
-            return BuildFrame(AddressWallpad, 0x0000, value, DeviceVentilation);
-        }
-
-        public static byte FanByteFromSpeed(VentilationSpeed speed)
-        {
-            return speed switch
-            {
-                VentilationSpeed.Medium => VentFanMedium,
-                VentilationSpeed.High => VentFanHigh,
-                _ => VentFanLow
-            };
-        }
-
-        public static VentilationSpeed ParseVentilationSpeed(byte[] value)
-        {
-            if (value == null || value.Length < 1) return VentilationSpeed.Off;
-            byte power = value[0];
-            if (power == VentPowerOff || power == VentPowerOffAlt) return VentilationSpeed.Off;
-
-            byte fan = value.Length >= 3 ? value[2] : VentFanLow;
-            return fan switch
-            {
-                VentFanMedium => VentilationSpeed.Medium,
-                VentFanHigh => VentilationSpeed.High,
-                _ => VentilationSpeed.Low
-            };
+            return BuildFrame(DeviceVentilation, 0x0001, new byte[] { (byte)speed, 0, 0, 0, 0, 0, 0, 0 });
         }
 
         public static byte[] CreateElevatorCallPacket()
@@ -269,7 +234,6 @@ namespace Homepad.Core
 
             string roomStr = frame.room switch
             {
-                0x0000 => "전체",
                 0x0001 => "거실",
                 0x0101 => "방1",
                 0x0201 => "방2",
@@ -325,22 +289,24 @@ namespace Homepad.Core
             }
             else if (dev == DeviceVentilation)
             {
-                if (frame.value != null && frame.value.Length >= 1)
+                if (frame.value != null && frame.value.Length >= 3)
                 {
                     byte v0 = frame.value[0];
-                    byte v2 = frame.value.Length >= 3 ? frame.value[2] : (byte)0;
-                    string fan = v2 switch
-                    {
-                        VentFanLow => "1단 (약)",
-                        VentFanMedium => "2단 (중)",
-                        VentFanHigh => "3단 (강)",
-                        _ => $"풍량(0x{v2:X2})"
-                    };
+                    byte v2 = frame.value[2];
 
-                    if (v0 == VentPowerOff || v0 == VentPowerOffAlt) sb.Append("OFF (정지)");
-                    else if (v0 == VentPowerOn) sb.Append($"ON (가동) {fan}");
-                    else if (v0 == 0x88) sb.Append($"풍량 {fan}");
-                    else sb.Append($"모드(0x{v0:X2}) {fan}");
+                    if (v0 == 0x00) sb.Append("OFF (정지)");
+                    else if (v0 == 0x11) sb.Append("ON (가동)");
+                    else if (v0 == 0x88)
+                    {
+                        string speed = v2 switch
+                        {
+                            0x40 => "1단 (약)",
+                            0x80 => "2단 (중)",
+                            0xC0 => "3단 (강)",
+                            _ => $"풍량(0x{v2:X2})"
+                        };
+                        sb.Append($"풍량 {speed}");
+                    }
                 }
             }
             else if (dev == DeviceDoorLock)

@@ -305,8 +305,9 @@ namespace Homepad.Core
                     RaiseStateChanged();
                     break;
                 case KocomProtocol.DeviceVentilation:
-                    ventilation.speed = KocomProtocol.ParseVentilationSpeed(frame.value);
-                    ventilation.isPowered = ventilation.speed != VentilationSpeed.Off;
+                    var speed = (VentilationSpeed)Mathf.Clamp(frame.value[0], 0, 3);
+                    ventilation.speed = speed;
+                    ventilation.isPowered = speed != VentilationSpeed.Off;
                     OnVentilationChanged?.Invoke(ventilation);
                     RaiseStateChanged();
                     break;
