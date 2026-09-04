@@ -78,6 +78,9 @@ namespace Homepad.Editor
                 var so = new SerializedObject(builder);
                 AssignPrefab(so, "ceilingLampPrefab", "Assets/Home/Kit/Prefabs/CeilingLamp.prefab");
                 AssignPrefab(so, "wallHeaterPrefab", "Assets/Home/Kit/Prefabs/WallHeater.prefab");
+                AssignMaterial(so, "opaqueLitTemplate", "Assets/Home/Kit/Materials/FloorOak.mat");
+                AssignMaterial(so, "transparentLitTemplate", "Assets/Home/Kit/Materials/WindowGlass.mat");
+                AssignMaterial(so, "emissiveLitTemplate", "Assets/Home/Kit/Materials/LampShade.mat");
                 so.ApplyModifiedProperties();
             }
 
@@ -91,6 +94,13 @@ namespace Homepad.Editor
             var prop = so.FindProperty(property);
             if (prop == null) return;
             prop.objectReferenceValue = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        }
+
+        private static void AssignMaterial(SerializedObject so, string property, string path)
+        {
+            var prop = so.FindProperty(property);
+            if (prop == null) return;
+            prop.objectReferenceValue = AssetDatabase.LoadAssetAtPath<Material>(path);
         }
 
         private static void EnsureVolumeProfile()

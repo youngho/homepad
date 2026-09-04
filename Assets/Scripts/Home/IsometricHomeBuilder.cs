@@ -16,6 +16,9 @@ namespace Homepad.Home
 
         [SerializeField] private GameObject ceilingLampPrefab;
         [SerializeField] private GameObject wallHeaterPrefab;
+        [SerializeField] private Material opaqueLitTemplate;
+        [SerializeField] private Material transparentLitTemplate;
+        [SerializeField] private Material emissiveLitTemplate;
 
         private Material floorMat;
         private Material translucentWallMat;
@@ -368,6 +371,12 @@ namespace Homepad.Home
                 ceilingLampPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/CeilingLamp.prefab");
             if (wallHeaterPrefab == null)
                 wallHeaterPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/WallHeater.prefab");
+            if (opaqueLitTemplate == null)
+                opaqueLitTemplate = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Home/Kit/Materials/FloorOak.mat");
+            if (transparentLitTemplate == null)
+                transparentLitTemplate = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Home/Kit/Materials/WindowGlass.mat");
+            if (emissiveLitTemplate == null)
+                emissiveLitTemplate = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Home/Kit/Materials/LampShade.mat");
 #endif
         }
 
@@ -412,36 +421,48 @@ namespace Homepad.Home
         private void EnsureMaterials()
         {
             if (floorMat != null) return;
-            var litShader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            EnsureKitPrefabs();
 
-            translucentWallMat = CreateMat("Mat_Wall_Translucent", litShader, new Color(0.96f, 0.93f, 0.88f, 0.32f), 0.55f);
+            if (opaqueLitTemplate == null || transparentLitTemplate == null)
+            {
+                Debug.LogError("IsometricHomeBuilder: kit materials are not assigned. Player builds cannot Shader.Find URP Lit.");
+                return;
+            }
+
+            var opaque = opaqueLitTemplate;
+            var glass = transparentLitTemplate;
+            var emissive = emissiveLitTemplate != null ? emissiveLitTemplate : opaque;
+
+            translucentWallMat = CreateMat(glass, "Mat_Wall_Translucent", new Color(0.96f, 0.93f, 0.88f, 0.32f), 0.55f);
             MakeTransparent(translucentWallMat, 10);
 
-            edgeLineMat = CreateMat("Mat_Wall_Edge", litShader, new Color(0.82f, 0.76f, 0.68f), 0.35f);
+            edgeLineMat = CreateMat(emissive, "Mat_Wall_Edge", new Color(0.82f, 0.76f, 0.68f), 0.35f);
             SetEmission(edgeLineMat, new Color(0.08f, 0.07f, 0.05f));
 
-            doorFrameMat = CreateMat("Mat_Door_Frame", litShader, new Color(0.72f, 0.54f, 0.38f), 0.45f);
-            windowFrameMat = CreateMat("Mat_Window_Frame", litShader, new Color(0.72f, 0.54f, 0.38f), 0.45f);
-            plinthMat = CreateMat("Mat_Plinth", litShader, new Color(0.24f, 0.26f, 0.30f), 0.30f);
-            groundMat = CreateMat("Mat_Ground", litShader, new Color(0.08f, 0.09f, 0.12f), 0.15f);
-            ghostMat = CreateMat("Mat_Ghost", litShader, new Color(0.35f, 0.75f, 1f, 0.45f), 0.5f);
-            curtainMat = CreateMat("Mat_Curtain_Fabric", litShader, new Color(0.94f, 0.92f, 0.88f), 0.35f);
+            doorFrameMat = CreateMat(opaque, "Mat_Door_Frame", new Color(0.72f, 0.54f, 0.38f), 0.45f);
+            windowFrameMat = CreateMat(opaque, "Mat_Window_Frame", new Color(0.72f, 0.54f, 0.38f), 0.45f);
+            plinthMat = CreateMat(opaque, "Mat_Plinth", new Color(0.24f, 0.26f, 0.30f), 0.30f);
+            groundMat = CreateMat(opaque, "Mat_Ground", new Color(0.08f, 0.09f, 0.12f), 0.15f);
+            ghostMat = CreateMat(glass, "Mat_Ghost", new Color(0.35f, 0.75f, 1f, 0.45f), 0.5f);
+            MakeTransparent(ghostMat, 5);
+            curtainMat = CreateMat(opaque, "Mat_Curtain_Fabric", new Color(0.94f, 0.92f, 0.88f), 0.35f);
 
-            glassMat = CreateMat("Mat_Window_Glass", litShader, new Color(0.65f, 0.82f, 0.95f, 0.28f), 0.92f);
+            glassMat = CreateMat(glass, "Mat_Window_Glass", new Color(0.65f, 0.82f, 0.95f, 0.28f), 0.92f);
             MakeTransparent(glassMat, 20);
 
-            floorMat = CreateMat("Mat_Floor_Default", litShader, new Color(0.92f, 0.82f, 0.70f), 0.35f);
-            roomFloors[RoomHint.Living] = CreateMat("Floor_Living_Oak", litShader, new Color(0.94f, 0.82f, 0.68f), 0.38f);
-            roomFloors[RoomHint.Master] = CreateMat("Floor_Master_Walnut", litShader, new Color(0.88f, 0.76f, 0.62f), 0.35f);
-            roomFloors[RoomHint.Bedroom] = CreateMat("Floor_Bedroom_Birch", litShader, new Color(0.96f, 0.86f, 0.74f), 0.35f);
-            roomFloors[RoomHint.Bedroom2] = CreateMat("Floor_Bedroom2_Honey", litShader, new Color(0.92f, 0.80f, 0.66f), 0.35f);
-            roomFloors[RoomHint.Kitchen] = CreateMat("Floor_Kitchen_Tile", litShader, new Color(0.94f, 0.94f, 0.92f), 0.55f);
-            roomFloors[RoomHint.Entrance] = CreateMat("Floor_Entrance_Stone", litShader, new Color(0.42f, 0.45f, 0.50f), 0.35f);
+            floorMat = CreateMat(opaque, "Mat_Floor_Default", new Color(0.92f, 0.82f, 0.70f), 0.35f);
+            roomFloors[RoomHint.Living] = CreateMat(opaque, "Floor_Living_Oak", new Color(0.94f, 0.82f, 0.68f), 0.38f);
+            roomFloors[RoomHint.Master] = CreateMat(opaque, "Floor_Master_Walnut", new Color(0.88f, 0.76f, 0.62f), 0.35f);
+            roomFloors[RoomHint.Bedroom] = CreateMat(opaque, "Floor_Bedroom_Birch", new Color(0.96f, 0.86f, 0.74f), 0.35f);
+            roomFloors[RoomHint.Bedroom2] = CreateMat(opaque, "Floor_Bedroom2_Honey", new Color(0.92f, 0.80f, 0.66f), 0.35f);
+            roomFloors[RoomHint.Kitchen] = CreateMat(opaque, "Floor_Kitchen_Tile", new Color(0.94f, 0.94f, 0.92f), 0.55f);
+            roomFloors[RoomHint.Entrance] = CreateMat(opaque, "Floor_Entrance_Stone", new Color(0.42f, 0.45f, 0.50f), 0.35f);
         }
 
-        private Material CreateMat(string name, Shader shader, Color color, float smoothness)
+        private Material CreateMat(Material template, string name, Color color, float smoothness)
         {
-            var mat = new Material(shader) { name = name };
+            if (template == null) return null;
+            var mat = new Material(template) { name = name };
             SetMatColor(mat, color);
             if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", smoothness);
             materials.Add(mat);
@@ -507,7 +528,7 @@ namespace Homepad.Home
 
         private static GameObject CreateMeshObject(string name, Transform parent, Mesh mesh, Material mat, bool collider, bool shadows)
         {
-            if (mesh == null) return null;
+            if (mesh == null || mat == null) return null;
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             var filter = go.AddComponent<MeshFilter>();
