@@ -549,7 +549,7 @@ namespace Homepad.UI
 
             for (int i = presetContainer.childCount - 1; i >= 0; i--)
             {
-                Destroy(presetContainer.GetChild(i).gameObject);
+                InspectorSafeDestroy.GameObject(presetContainer.GetChild(i).gameObject);
             }
 
             var presets = KocomHexPresets.GetPresetsByCategory(category);
@@ -561,6 +561,7 @@ namespace Homepad.UI
                 if (presetItemPrefab != null)
                 {
                     rowObj = Instantiate(presetItemPrefab, presetContainer);
+                    rowObj.hideFlags = HideFlags.DontSave;
                 }
                 else
                 {
@@ -659,7 +660,7 @@ namespace Homepad.UI
             logLineCount = 0;
             for (int i = 0; i < logEntries.Count; i++)
             {
-                if (logEntries[i] != null) Destroy(logEntries[i]);
+                if (logEntries[i] != null) InspectorSafeDestroy.GameObject(logEntries[i]);
             }
 
             logEntries.Clear();
@@ -698,7 +699,7 @@ namespace Homepad.UI
                 if (oldest != null)
                 {
                     oldest.transform.SetParent(null, false);
-                    Destroy(oldest);
+                    InspectorSafeDestroy.GameObject(oldest);
                 }
 
                 logLineCount--;
@@ -724,6 +725,7 @@ namespace Homepad.UI
             if (content == null) return;
 
             var entry = new GameObject("LogEntry", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+            entry.hideFlags = HideFlags.DontSave;
             entry.transform.SetParent(content, false);
             logEntries.Add(entry);
 
@@ -778,6 +780,7 @@ namespace Homepad.UI
             if (fields == null || fields.Length == 0) return;
 
             var table = new GameObject("HexTable", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+            table.hideFlags = HideFlags.DontSave;
             table.transform.SetParent(parent, false);
 
             var tableImg = table.GetComponent<Image>();
@@ -807,6 +810,7 @@ namespace Homepad.UI
         private void BuildHexTableCell(Transform parent, KocomProtocol.HexTableField field)
         {
             var cell = new GameObject(field.Label, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+            cell.hideFlags = HideFlags.DontSave;
             cell.transform.SetParent(parent, false);
 
             var img = cell.GetComponent<Image>();
@@ -845,6 +849,7 @@ namespace Homepad.UI
             hexLe.preferredHeight = 22f;
 
             var rule = new GameObject("Rule", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            rule.hideFlags = HideFlags.DontSave;
             rule.transform.SetParent(cell.transform, false);
             var ruleImg = rule.GetComponent<Image>();
             ruleImg.color = HexTableLine;
@@ -1602,6 +1607,7 @@ namespace Homepad.UI
             if (logText == null || logHighlightRoot != null) return;
 
             var go = new GameObject("LogHighlight", typeof(RectTransform));
+            go.hideFlags = HideFlags.HideAndDontSave;
             go.transform.SetParent(logText.transform.parent, false);
             go.transform.SetAsFirstSibling();
             logHighlightRoot = go.GetComponent<RectTransform>();
@@ -1632,28 +1638,39 @@ namespace Homepad.UI
             EnsureLogHighlightRoot();
             while (logHighlightPool.Count <= index)
             {
-                var go = new GameObject("Sel", typeof(RectTransform), typeof(Image));
-                go.transform.SetParent(logHighlightRoot, false);
-                var img = go.GetComponent<Image>();
-                img.raycastTarget = false;
-                img.color = LogSelectionColor;
-                img.sprite = roundedSprite != null
-                    ? roundedSprite
-                    : Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 4f, 4f), new Vector2(0.5f, 0.5f), 4f);
-                if (roundedSprite != null)
-                {
-                    img.type = Image.Type.Sliced;
-                    img.pixelsPerUnitMultiplier = 2.4f;
-                }
+                logHighlightPool.Add(CreateLogHighlight());
+            }
 
-                var rt = go.GetComponent<RectTransform>();
-                rt.anchorMin = new Vector2(0f, 1f);
-                rt.anchorMax = new Vector2(0f, 1f);
-                rt.pivot = new Vector2(0f, 1f);
-                logHighlightPool.Add(img);
+            if (logHighlightPool[index] == null)
+            {
+                logHighlightPool[index] = CreateLogHighlight();
             }
 
             return logHighlightPool[index];
+        }
+
+        private Image CreateLogHighlight()
+        {
+            var go = new GameObject("Sel", typeof(RectTransform), typeof(Image));
+            go.hideFlags = HideFlags.HideAndDontSave;
+            go.transform.SetParent(logHighlightRoot, false);
+            var img = go.GetComponent<Image>();
+            img.raycastTarget = false;
+            img.color = LogSelectionColor;
+            img.sprite = roundedSprite != null
+                ? roundedSprite
+                : Sprite.Create(Texture2D.whiteTexture, new Rect(0f, 0f, 4f, 4f), new Vector2(0.5f, 0.5f), 4f);
+            if (roundedSprite != null)
+            {
+                img.type = Image.Type.Sliced;
+                img.pixelsPerUnitMultiplier = 2.4f;
+            }
+
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(0f, 1f);
+            rt.pivot = new Vector2(0f, 1f);
+            return img;
         }
 
         private void RebuildLogHighlights(bool wholeLines)
@@ -1701,6 +1718,7 @@ namespace Homepad.UI
                 }
 
                 var img = GetLogHighlight(used++);
+                if (img == null) continue;
                 img.gameObject.SetActive(true);
                 var rt = img.rectTransform;
                 float top = logLineInfos[i].topY / ppu;
@@ -1771,6 +1789,7 @@ namespace Homepad.UI
         private GameObject CreatePresetRowObject(Transform parent, HexPreset preset, int rowIndex)
         {
             GameObject row = new GameObject("PresetRow", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            row.hideFlags = HideFlags.DontSave;
             row.transform.SetParent(parent, false);
             var rowImg = row.GetComponent<Image>();
             if (roundedSprite != null)

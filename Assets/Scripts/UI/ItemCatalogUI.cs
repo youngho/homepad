@@ -200,7 +200,7 @@ namespace Homepad.UI
         {
             for (int i = 0; i < activeInstances.Count; i++)
             {
-                if (activeInstances[i] != null) Destroy(activeInstances[i]);
+                if (activeInstances[i] != null) InspectorSafeDestroy.GameObject(activeInstances[i]);
             }
 
             activeInstances.Clear();
@@ -210,7 +210,7 @@ namespace Homepad.UI
             {
                 var child = contentRoot.GetChild(i);
                 if (child.name == "Templates") continue;
-                Destroy(child.gameObject);
+                InspectorSafeDestroy.GameObject(child.gameObject);
             }
         }
 
