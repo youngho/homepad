@@ -44,8 +44,8 @@ namespace Homepad.UI
             {
                 string house = WallpadManager.Instance.Config != null
                     ? WallpadManager.Instance.Config.householdName
-                    : "우리집";
-                houseTitle.text = $"{house}  ·  {WallpadManager.Instance.HouseholdFloor}층";
+                    : "세종시 첫마을 503동 2801호";
+                houseTitle.text = house;
             }
 
             var home = HomeController.Instance;

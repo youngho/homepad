@@ -8,8 +8,8 @@ namespace Homepad.Core
     public class WallpadConfig : ScriptableObject
     {
         [Header("Household")]
-        public string householdName = "우리집";
-        public int householdFloor = 12;
+        public string householdName = "세종시 첫마을 503동 2801호";
+        public int householdFloor = 28;
 
         [Header("Arduino")]
         public string arduinoIp = "192.168.0.100";
@@ -41,8 +41,8 @@ namespace Homepad.Core
         public static WallpadConfig CreateRuntimeDefault()
         {
             var config = CreateInstance<WallpadConfig>();
-            config.householdName = "우리집";
-            config.householdFloor = 12;
+            config.householdName = "세종시 첫마을 503동 2801호";
+            config.householdFloor = 28;
             config.lights = new List<LightDefinition>();
             config.heatingRooms = new List<HeatingRoomDefinition>();
             return config;

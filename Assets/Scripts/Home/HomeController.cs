@@ -10,7 +10,7 @@ namespace Homepad.Home
     [DefaultExecutionOrder(-50)]
     public class HomeController : MonoBehaviour
     {
-        public const string SaveKey = "Homepad.MyHome.v2";
+        public const string SaveKey = "Homepad.MyHome.v3";
 
         public static HomeController Instance { get; private set; }
 
@@ -544,6 +544,33 @@ namespace Homepad.Home
                 }
             }
 
+            SeedCheotmaeulDemo();
+        }
+
+        // 임시 테스트 세대. 나중에 집 설정 화면이 생기면 이 기본값만 빼면 된다.
+        private void SeedCheotmaeulDemo()
+        {
+            int step = HomeLayout.RoomSize;
+            var living = service.CreateRoom(RoomHint.Living, Vector2Int.zero, "거실");
+            var room1 = service.CreateRoom(RoomHint.Master, new Vector2Int(step, 0), "방1");
+            var room2 = service.CreateRoom(RoomHint.Bedroom, new Vector2Int(0, step), "방2");
+            var room3 = service.CreateRoom(RoomHint.Bedroom2, new Vector2Int(step, step), "방3");
+
+            PlaceDemoLights(living);
+            PlaceDemoLights(room1);
+            PlaceDemoLights(room2);
+            PlaceDemoLights(room3);
+
+            SelectRoom(living);
+            Save();
+        }
+
+        private void PlaceDemoLights(RoomRecord room)
+        {
+            if (room == null) return;
+            var def = HomeItemDef.Create(HomeItemKind.Light, room.Hint, room.Name);
+            service.PlaceIntoRoom(def, room, room.Origin + new Vector2Int(1, 2), 0);
+            service.PlaceIntoRoom(def, room, room.Origin + new Vector2Int(2, 1), 0);
         }
 
         private void ApplySave(HomeSaveData data)

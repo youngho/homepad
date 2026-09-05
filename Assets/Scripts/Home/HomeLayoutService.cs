@@ -361,7 +361,7 @@ namespace Homepad.Home
                     if (layout.Items[i].Kind == HomeItemKind.Light && layout.Items[i].RoomHint == room.Hint) count++;
                 }
 
-                return count <= 1 ? $"{room.Name} 조명" : $"{room.Name} 조명 {count}";
+                return $"{room.Name} 조명{count}";
             }
 
             return def.DisplayName;
