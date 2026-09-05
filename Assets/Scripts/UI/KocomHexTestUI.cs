@@ -31,6 +31,7 @@ namespace Homepad.UI
         [Header("Serial Connection")]
         [SerializeField] private InputField portField;
         [SerializeField] private InputField baudField;
+        [SerializeField] private Text baudLabel;
         [SerializeField] private Text statusText;
         [SerializeField] private Image statusDot;
         [SerializeField] private Button wallpadButton;
@@ -39,6 +40,15 @@ namespace Homepad.UI
         [SerializeField] private Button refreshButton;
         [SerializeField] private Button connectButton;
         [SerializeField] private Button disconnectButton;
+        [SerializeField] private Toggle arduinoToggle;
+        [SerializeField] private Toggle ew11Toggle;
+        [SerializeField] private Toggle serialToggle;
+        [SerializeField] private Toggle tcpToggle;
+        [SerializeField] private Toggle mqttToggle;
+        [SerializeField] private InputField mqttUserField;
+        [SerializeField] private InputField mqttPassField;
+        [SerializeField] private InputField mqttTxField;
+        [SerializeField] private InputField mqttRxField;
 
         [Header("Tabs")]
         [SerializeField] private Button tabAllButton;
@@ -91,10 +101,20 @@ namespace Homepad.UI
         private readonly List<GameObject> logEntries = new List<GameObject>();
         private readonly List<string> logPlainEntries = new List<string>();
         private bool logFollowTail = true;
+        private KocomLinkDevice linkDevice = KocomLinkDevice.Arduino;
+        private ArduinoLinkMode linkProtocol = ArduinoLinkMode.Serial;
+        private ArduinoLinkMode arduinoProtocol = ArduinoLinkMode.Serial;
+        private ArduinoLinkMode ew11Protocol = ArduinoLinkMode.Tcp;
+        private GameObject mqttBar;
+        private RectTransform leftPanelRt;
+        private RectTransform rightPanelRt;
+        private float panelsMaxY = 0.86f;
+        private bool linkUiApplying;
 
         private void Awake()
         {
             AutoResolveUiReferences();
+            EnsureLinkUi();
             BindEvents();
             HookConnector();
             EnsureLogLayout();
@@ -125,10 +145,20 @@ namespace Homepad.UI
                 customHexInput.text = "AA 55 30 BC 00 0E 00 01 00 00 FF 00 00 00 00 00 00 00 FA 0D 0D";
             }
 
-            RefreshPorts(true);
+            LoadLinkPrefs();
+            if (linkProtocol == ArduinoLinkMode.Serial)
+            {
+                RefreshPorts(true);
+            }
+            else
+            {
+                ports = ArduinoConnector.ListSerialPorts() ?? new string[0];
+            }
+
             lastSeenPorts = ports ?? new string[0];
             PopulatePresetList(HexCategory.All);
             SwitchCategory(HexCategory.All, tabAllButton);
+            ApplyLinkUi();
             UiInputBootstrap.GiveMouseToUi();
 
             if (ports.Length > 0)
@@ -220,6 +250,7 @@ namespace Homepad.UI
         {
             if (portField == null) portField = FindUi<InputField>("Port");
             if (baudField == null) baudField = FindUi<InputField>("Baud");
+            if (baudLabel == null) baudLabel = FindUi<Text>("BaudLabel");
             if (statusText == null) statusText = FindUi<Text>("Status");
             if (statusDot == null) statusDot = FindUi<Image>("StatusDot");
             if (wallpadButton == null) wallpadButton = FindUi<Button>("WallpadScene");
@@ -228,6 +259,15 @@ namespace Homepad.UI
             if (refreshButton == null) refreshButton = FindUi<Button>("Refresh");
             if (connectButton == null) connectButton = FindUi<Button>("Connect");
             if (disconnectButton == null) disconnectButton = FindUi<Button>("Disconnect");
+            if (arduinoToggle == null) arduinoToggle = FindUi<Toggle>("DeviceArduino");
+            if (ew11Toggle == null) ew11Toggle = FindUi<Toggle>("DeviceEw11");
+            if (serialToggle == null) serialToggle = FindUi<Toggle>("ProtoSerial");
+            if (tcpToggle == null) tcpToggle = FindUi<Toggle>("ProtoTcp");
+            if (mqttToggle == null) mqttToggle = FindUi<Toggle>("ProtoMqtt");
+            if (mqttUserField == null) mqttUserField = FindUi<InputField>("MqttUser");
+            if (mqttPassField == null) mqttPassField = FindUi<InputField>("MqttPass");
+            if (mqttTxField == null) mqttTxField = FindUi<InputField>("MqttTx");
+            if (mqttRxField == null) mqttRxField = FindUi<InputField>("MqttRx");
 
             if (tabAllButton == null) tabAllButton = FindUi<Button>("TabAll");
             if (tabLightingButton == null) tabLightingButton = FindUi<Button>("TabLighting");
@@ -342,7 +382,7 @@ namespace Homepad.UI
                     if (IndexOfPort(lastSeenPorts, now[i]) < 0)
                     {
                         AppendLog($"<color=#5CAE7C>[USB 감지]</color> {now[i]}", false);
-                        if (portField != null)
+                        if (linkProtocol == ArduinoLinkMode.Serial && portField != null)
                         {
                             portField.text = now[i];
                             portIndex = i;
@@ -385,6 +425,8 @@ namespace Homepad.UI
         private void TryAutoConnect()
         {
             if (autoConnectAttempted) return;
+            if (linkProtocol != ArduinoLinkMode.Serial) return;
+            if (linkDevice != KocomLinkDevice.Arduino) return;
             if (portField == null || string.IsNullOrEmpty(portField.text.Trim())) return;
             autoConnectAttempted = true;
             StartCoroutine(AutoConnectAfterDelay());
@@ -420,6 +462,11 @@ namespace Homepad.UI
             Bind(refreshButton, () => RefreshPorts(false));
             Bind(connectButton, OnConnectClicked);
             Bind(disconnectButton, () => GetConnector()?.Disconnect());
+            BindToggle(arduinoToggle, on => { if (on) SelectDevice(KocomLinkDevice.Arduino); });
+            BindToggle(ew11Toggle, on => { if (on) SelectDevice(KocomLinkDevice.Ew11); });
+            BindToggle(serialToggle, on => { if (on) SelectProtocol(ArduinoLinkMode.Serial); });
+            BindToggle(tcpToggle, on => { if (on) SelectProtocol(ArduinoLinkMode.Tcp); });
+            BindToggle(mqttToggle, on => { if (on) SelectProtocol(ArduinoLinkMode.Mqtt); });
 
             // Tabs
             Bind(tabAllButton, () => SwitchCategory(HexCategory.All, tabAllButton));
@@ -888,12 +935,16 @@ namespace Homepad.UI
             string saved = PlayerPrefs.GetString("Homepad.SerialPort", "");
             if (ports.Length == 0)
             {
-                if (preferSaved && !string.IsNullOrEmpty(saved) && portField != null)
+                if (preferSaved && linkProtocol == ArduinoLinkMode.Serial && !string.IsNullOrEmpty(saved) && portField != null)
                 {
                     portField.text = saved;
                 }
 
-                AppendLog("<color=#CF5C5C>[시스템] USB 시리얼 포트를 찾지 못했습니다. 아두이노를 다시 꽂거나 IDE 시리얼 모니터를 닫은 뒤 새로고침하세요.</color>", false);
+                if (linkProtocol == ArduinoLinkMode.Serial)
+                {
+                    AppendLog("<color=#CF5C5C>[시스템] USB 시리얼 포트를 찾지 못했습니다. 아두이노를 다시 꽂거나 IDE 시리얼 모니터를 닫은 뒤 새로고침하세요.</color>", false);
+                }
+
                 return;
             }
 
@@ -904,7 +955,11 @@ namespace Homepad.UI
                 if (found >= 0) portIndex = found;
             }
 
-            if (portField != null) portField.text = ports[portIndex];
+            if (linkProtocol == ArduinoLinkMode.Serial && portField != null)
+            {
+                portField.text = ports[portIndex];
+            }
+
             AppendLog($"<color=#9EA6B5>[시스템] 시리얼 포트 {ports.Length}개: {string.Join(", ", ports)}</color>", false);
         }
 
@@ -929,26 +984,169 @@ namespace Homepad.UI
                 return;
             }
 
-            string port = portField != null ? portField.text.Trim() : "";
-            if (string.IsNullOrEmpty(port))
+            serial.SetLinkLabel(DeviceLabel());
+            SaveLinkPrefs();
+
+            if (linkProtocol == ArduinoLinkMode.Serial)
             {
-                AppendLog("<color=#CF5C5C>[오류] 시리얼 포트가 비어 있습니다. 새로고침 후 포트를 선택하세요.</color>", false);
+                if (linkDevice != KocomLinkDevice.Arduino)
+                {
+                    AppendLog("<color=#E5B550>[안내] EW-11은 USB 시리얼이 없습니다. TCP 또는 MQTT를 선택하세요.</color>", false);
+                    return;
+                }
+
+                string port = portField != null ? portField.text.Trim() : "";
+                if (string.IsNullOrEmpty(port))
+                {
+                    AppendLog("<color=#CF5C5C>[오류] 시리얼 포트가 비어 있습니다. 새로고침 후 포트를 선택하세요.</color>", false);
+                    return;
+                }
+
+                int baud = 115200;
+                if (baudField != null && int.TryParse(baudField.text.Trim(), out int parsed) && parsed > 0)
+                {
+                    baud = parsed;
+                }
+
+                serial.SetSerialTarget(port, baud);
                 return;
             }
 
-            int baud = 115200;
-            if (baudField != null && int.TryParse(baudField.text.Trim(), out int parsed) && parsed > 0)
+            string host = portField != null ? portField.text.Trim() : "";
+            if (string.IsNullOrEmpty(host))
             {
-                baud = parsed;
+                AppendLog("<color=#CF5C5C>[오류] 호스트 주소가 비어 있습니다.</color>", false);
+                return;
             }
-            serial.SetSerialTarget(port, baud);
+
+            int netPort = linkProtocol == ArduinoLinkMode.Mqtt ? 1883 : DefaultTcpPort();
+            if (baudField != null && int.TryParse(baudField.text.Trim(), out int parsedPort) && parsedPort > 0)
+            {
+                netPort = parsedPort;
+            }
+
+            if (linkProtocol == ArduinoLinkMode.Mqtt)
+            {
+                string user = mqttUserField != null ? mqttUserField.text.Trim() : "";
+                string pass = mqttPassField != null ? mqttPassField.text : "";
+                string tx = mqttTxField != null ? mqttTxField.text.Trim() : "kocom/tx";
+                string rx = mqttRxField != null ? mqttRxField.text.Trim() : "kocom/rx";
+                if (string.IsNullOrEmpty(tx)) tx = "kocom/tx";
+                if (string.IsNullOrEmpty(rx)) rx = "kocom/rx";
+                serial.SetMqttTarget(host, netPort, user, pass, tx, rx);
+                return;
+            }
+
+            serial.SetTcpTarget(host, netPort);
+        }
+
+        private void SelectDevice(KocomLinkDevice device)
+        {
+            if (linkUiApplying || linkDevice == device) return;
+
+            RememberProtocolForDevice();
+            bool switchedToEw11 = device == KocomLinkDevice.Ew11;
+            linkDevice = device;
+            linkProtocol = ProtocolForDevice(device);
+
+            if (linkProtocol == ArduinoLinkMode.Serial)
+            {
+                EnsureSerialPortsListed();
+            }
+
+            ApplyLinkUi();
+            SaveLinkPrefs();
+            if (switchedToEw11)
+            {
+                AppendLog("<color=#9EA6B5>[안내] EW-11은 TCP(기본 포트 8899) 또는 MQTT로 붙습니다. 장치 IP를 입력한 뒤 연결하세요. MQTT면 EW-11 구독 토픽=송신, 발행 토픽=수신입니다.</color>", false);
+            }
+        }
+
+        private void SelectProtocol(ArduinoLinkMode protocol)
+        {
+            if (linkUiApplying || linkProtocol == protocol) return;
+            if (linkDevice == KocomLinkDevice.Ew11 && protocol == ArduinoLinkMode.Serial)
+            {
+                ApplyLinkUi();
+                return;
+            }
+
+            linkProtocol = protocol;
+            RememberProtocolForDevice();
+            if (linkProtocol == ArduinoLinkMode.Serial)
+            {
+                EnsureSerialPortsListed();
+            }
+
+            ApplyLinkUi();
+            SaveLinkPrefs();
+        }
+
+        private void RememberProtocolForDevice()
+        {
+            if (linkDevice == KocomLinkDevice.Arduino)
+            {
+                arduinoProtocol = linkProtocol;
+            }
+            else
+            {
+                ew11Protocol = linkProtocol == ArduinoLinkMode.Serial
+                    ? ArduinoLinkMode.Tcp
+                    : linkProtocol;
+            }
+        }
+
+        private ArduinoLinkMode ProtocolForDevice(KocomLinkDevice device)
+        {
+            if (device == KocomLinkDevice.Arduino)
+            {
+                return ClampArduinoProtocol(arduinoProtocol);
+            }
+
+            return ClampEw11Protocol(ew11Protocol);
+        }
+
+        private string DeviceLabel()
+        {
+            return linkDevice == KocomLinkDevice.Ew11 ? "EW-11" : "아두이노";
+        }
+
+        private string ProtocolLabel()
+        {
+            return linkProtocol switch
+            {
+                ArduinoLinkMode.Tcp => "TCP",
+                ArduinoLinkMode.Mqtt => "MQTT",
+                _ => "시리얼"
+            };
+        }
+
+        private int DefaultTcpPort()
+        {
+            return linkDevice == KocomLinkDevice.Ew11 ? 8899 : 8080;
         }
 
         private void UpdateStatus(bool isConnected)
         {
             if (statusText != null)
             {
-                statusText.text = isConnected ? "시리얼 연결됨" : "연결 안 됨";
+                if (!isConnected)
+                {
+                    statusText.text = "연결 안 됨";
+                }
+                else if (linkProtocol == ArduinoLinkMode.Mqtt)
+                {
+                    statusText.text = DeviceLabel() + " MQTT 연결됨";
+                }
+                else if (linkProtocol == ArduinoLinkMode.Tcp)
+                {
+                    statusText.text = DeviceLabel() + " TCP 연결됨";
+                }
+                else
+                {
+                    statusText.text = "시리얼 연결됨";
+                }
+
                 statusText.color = isConnected ? MutedGreen : MutedRed;
             }
 
@@ -956,6 +1154,298 @@ namespace Homepad.UI
             {
                 statusDot.color = isConnected ? MutedGreen : MutedRed;
             }
+        }
+
+        private void EnsureLinkUi()
+        {
+            if (arduinoToggle == null) arduinoToggle = FindUi<Toggle>("DeviceArduino");
+            if (ew11Toggle == null) ew11Toggle = FindUi<Toggle>("DeviceEw11");
+            if (serialToggle == null) serialToggle = FindUi<Toggle>("ProtoSerial");
+            if (tcpToggle == null) tcpToggle = FindUi<Toggle>("ProtoTcp");
+            if (mqttToggle == null) mqttToggle = FindUi<Toggle>("ProtoMqtt");
+            if (mqttUserField == null) mqttUserField = FindUi<InputField>("MqttUser");
+            if (mqttPassField == null) mqttPassField = FindUi<InputField>("MqttPass");
+            if (mqttTxField == null) mqttTxField = FindUi<InputField>("MqttTx");
+            if (mqttRxField == null) mqttRxField = FindUi<InputField>("MqttRx");
+
+            leftPanelRt = FindUi<RectTransform>("LeftPanel");
+            rightPanelRt = FindUi<RectTransform>("RightPanel");
+            if (leftPanelRt != null) panelsMaxY = leftPanelRt.anchorMax.y;
+
+            var mqttRt = FindUi<RectTransform>("MqttBar");
+            if (mqttRt != null) mqttBar = mqttRt.gameObject;
+        }
+
+        private void LoadLinkPrefs()
+        {
+            linkDevice = (KocomLinkDevice)PlayerPrefs.GetInt("Homepad.LinkDevice", (int)KocomLinkDevice.Arduino);
+            if (linkDevice != KocomLinkDevice.Ew11) linkDevice = KocomLinkDevice.Arduino;
+
+            int legacy = PlayerPrefs.GetInt("Homepad.LinkProtocol", (int)ArduinoLinkMode.Serial);
+            arduinoProtocol = PlayerPrefs.HasKey("Homepad.ArduinoProtocol")
+                ? ClampArduinoProtocol((ArduinoLinkMode)PlayerPrefs.GetInt("Homepad.ArduinoProtocol"))
+                : ArduinoLinkMode.Serial;
+            ew11Protocol = PlayerPrefs.HasKey("Homepad.Ew11Protocol")
+                ? ClampEw11Protocol((ArduinoLinkMode)PlayerPrefs.GetInt("Homepad.Ew11Protocol"))
+                : (linkDevice == KocomLinkDevice.Ew11 ? ClampEw11Protocol((ArduinoLinkMode)legacy) : ArduinoLinkMode.Tcp);
+            linkProtocol = ProtocolForDevice(linkDevice);
+
+            if (mqttUserField != null) mqttUserField.text = PlayerPrefs.GetString("Homepad.MqttUser", "");
+            if (mqttPassField != null) mqttPassField.text = PlayerPrefs.GetString("Homepad.MqttPass", "");
+            if (mqttTxField != null)
+            {
+                string tx = PlayerPrefs.GetString("Homepad.MqttTx", "kocom/tx");
+                mqttTxField.text = string.IsNullOrEmpty(tx) ? "kocom/tx" : tx;
+            }
+
+            if (mqttRxField != null)
+            {
+                string rx = PlayerPrefs.GetString("Homepad.MqttRx", "kocom/rx");
+                mqttRxField.text = string.IsNullOrEmpty(rx) ? "kocom/rx" : rx;
+            }
+        }
+
+        private void SaveLinkPrefs()
+        {
+            RememberProtocolForDevice();
+            PlayerPrefs.SetInt("Homepad.LinkDevice", (int)linkDevice);
+            PlayerPrefs.SetInt("Homepad.LinkProtocol", (int)linkProtocol);
+            PlayerPrefs.SetInt("Homepad.ArduinoProtocol", (int)arduinoProtocol);
+            PlayerPrefs.SetInt("Homepad.Ew11Protocol", (int)ew11Protocol);
+            if (linkProtocol == ArduinoLinkMode.Serial && portField != null)
+            {
+                string serialPort = portField.text.Trim();
+                if (!string.IsNullOrEmpty(serialPort) && !LooksLikeNetworkHost(serialPort))
+                {
+                    PlayerPrefs.SetString("Homepad.SerialPort", serialPort);
+                }
+            }
+
+            if (linkProtocol == ArduinoLinkMode.Tcp && portField != null)
+            {
+                PlayerPrefs.SetString("Homepad.TcpHost", portField.text.Trim());
+                if (baudField != null && int.TryParse(baudField.text.Trim(), out int p))
+                {
+                    PlayerPrefs.SetInt("Homepad.TcpPort", p);
+                }
+            }
+
+            if (linkProtocol == ArduinoLinkMode.Mqtt && portField != null)
+            {
+                PlayerPrefs.SetString("Homepad.MqttHost", portField.text.Trim());
+                if (baudField != null && int.TryParse(baudField.text.Trim(), out int p))
+                {
+                    PlayerPrefs.SetInt("Homepad.MqttPort", p);
+                }
+            }
+
+            if (mqttUserField != null) PlayerPrefs.SetString("Homepad.MqttUser", mqttUserField.text.Trim());
+            if (mqttPassField != null) PlayerPrefs.SetString("Homepad.MqttPass", mqttPassField.text);
+            if (mqttTxField != null) PlayerPrefs.SetString("Homepad.MqttTx", mqttTxField.text.Trim());
+            if (mqttRxField != null) PlayerPrefs.SetString("Homepad.MqttRx", mqttRxField.text.Trim());
+            PlayerPrefs.Save();
+        }
+
+        private void ApplyLinkUi()
+        {
+            bool arduino = linkDevice == KocomLinkDevice.Arduino;
+            bool serial = linkProtocol == ArduinoLinkMode.Serial;
+            bool mqtt = linkProtocol == ArduinoLinkMode.Mqtt;
+
+            linkUiApplying = true;
+            SetToggleOn(arduinoToggle, arduino);
+            SetToggleOn(ew11Toggle, !arduino);
+            SetToggleOn(serialToggle, serial);
+            SetToggleOn(tcpToggle, linkProtocol == ArduinoLinkMode.Tcp);
+            SetToggleOn(mqttToggle, mqtt);
+            if (serialToggle != null)
+            {
+                serialToggle.interactable = arduino;
+                serialToggle.gameObject.SetActive(arduino);
+            }
+
+            StyleToggle(arduinoToggle, arduino);
+            StyleToggle(ew11Toggle, !arduino);
+            StyleToggle(serialToggle, serial);
+            StyleToggle(tcpToggle, linkProtocol == ArduinoLinkMode.Tcp);
+            StyleToggle(mqttToggle, mqtt);
+            linkUiApplying = false;
+
+            SetActive(prevPortButton, serial);
+            SetActive(nextPortButton, serial);
+            SetActive(refreshButton, serial);
+            if (baudLabel != null)
+            {
+                baudLabel.gameObject.SetActive(serial);
+                baudLabel.fontStyle = FontStyle.Normal;
+                baudLabel.text = "Baud: 115200";
+            }
+
+            if (baudField != null) baudField.gameObject.SetActive(!serial);
+            SetPortFieldWidth(serial);
+
+            if (mqttBar != null) mqttBar.SetActive(mqtt);
+            float maxY = mqtt ? 0.78f : panelsMaxY;
+            SetPanelMaxY(leftPanelRt, maxY);
+            SetPanelMaxY(rightPanelRt, maxY);
+
+            if (portField != null && portField.placeholder is Text portPh)
+            {
+                portPh.fontStyle = FontStyle.Normal;
+                portPh.text = serial ? "시리얼 포트" : (mqtt ? "MQTT 브로커 IP" : "장치 IP");
+            }
+
+            if (baudField != null && baudField.placeholder is Text baudPh)
+            {
+                baudPh.fontStyle = FontStyle.Normal;
+                baudPh.text = mqtt ? "1883" : DefaultTcpPort().ToString();
+            }
+
+            if (serial)
+            {
+                FillSerialPortField();
+            }
+            else
+            {
+                FillNetworkFields(mqtt);
+            }
+
+            var protocolGroup = serialToggle != null
+                ? serialToggle.transform.parent as RectTransform
+                : (tcpToggle != null ? tcpToggle.transform.parent as RectTransform : null);
+            if (protocolGroup != null)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(protocolGroup);
+            }
+        }
+
+        private void FillSerialPortField()
+        {
+            if (portField == null) return;
+
+            string saved = PlayerPrefs.GetString("Homepad.SerialPort", "");
+            if (ports != null && ports.Length > 0)
+            {
+                int found = IndexOfPort(ports, saved);
+                portIndex = found >= 0 ? found : Mathf.Clamp(portIndex, 0, ports.Length - 1);
+                portField.text = ports[portIndex];
+            }
+            else if (!string.IsNullOrEmpty(saved) && !LooksLikeNetworkHost(saved))
+            {
+                portField.text = saved;
+            }
+            else
+            {
+                portField.text = string.Empty;
+            }
+
+            if (baudField != null) baudField.text = "115200";
+        }
+
+        private void FillNetworkFields(bool mqtt)
+        {
+            if (portField == null) return;
+            if (mqtt)
+            {
+                string host = PlayerPrefs.GetString("Homepad.MqttHost", "");
+                int port = PlayerPrefs.GetInt("Homepad.MqttPort", 1883);
+                if (string.IsNullOrEmpty(host) || LooksLikeSerialPort(host))
+                {
+                    host = PlayerPrefs.GetString("Homepad.TcpHost", "192.168.0.100");
+                }
+
+                if (string.IsNullOrEmpty(host) || LooksLikeSerialPort(host)) host = "192.168.0.100";
+                portField.text = host;
+                if (baudField != null) baudField.text = port > 0 ? port.ToString() : "1883";
+            }
+            else
+            {
+                string host = PlayerPrefs.GetString("Homepad.TcpHost", "192.168.0.100");
+                int port = PlayerPrefs.GetInt("Homepad.TcpPort", DefaultTcpPort());
+                if (LooksLikeSerialPort(host)) host = "192.168.0.100";
+                if (port == 115200 || port <= 0) port = DefaultTcpPort();
+                portField.text = host;
+                if (baudField != null) baudField.text = port.ToString();
+            }
+        }
+
+        private void EnsureSerialPortsListed()
+        {
+            ports = ArduinoConnector.ListSerialPorts() ?? new string[0];
+            lastSeenPorts = ports;
+        }
+
+        private static ArduinoLinkMode ClampArduinoProtocol(ArduinoLinkMode protocol)
+        {
+            return protocol == ArduinoLinkMode.Tcp || protocol == ArduinoLinkMode.Mqtt
+                ? protocol
+                : ArduinoLinkMode.Serial;
+        }
+
+        private static ArduinoLinkMode ClampEw11Protocol(ArduinoLinkMode protocol)
+        {
+            return protocol == ArduinoLinkMode.Mqtt ? ArduinoLinkMode.Mqtt : ArduinoLinkMode.Tcp;
+        }
+
+        private static bool LooksLikeNetworkHost(string value)
+        {
+            if (string.IsNullOrEmpty(value) || LooksLikeSerialPort(value)) return false;
+            return value.IndexOf('.') >= 0;
+        }
+
+        private static bool LooksLikeSerialPort(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return false;
+            return value.StartsWith("/") || value.StartsWith("COM", StringComparison.OrdinalIgnoreCase) || value.Contains("/dev/");
+        }
+
+        private static void SetActive(Component target, bool on)
+        {
+            if (target != null) target.gameObject.SetActive(on);
+        }
+
+        private void SetPortFieldWidth(bool serial)
+        {
+            var rt = portField != null ? portField.GetComponent<RectTransform>() : null;
+            if (rt == null) return;
+            rt.anchorMin = new Vector2(0.438f, 0.2f);
+            rt.anchorMax = new Vector2(serial ? 0.522f : 0.636f, 0.8f);
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+            rt.anchoredPosition = Vector2.zero;
+        }
+
+        private static void SetPanelMaxY(RectTransform panel, float maxY)
+        {
+            if (panel == null) return;
+            var max = panel.anchorMax;
+            max.y = maxY;
+            panel.anchorMax = max;
+        }
+
+        private static void SetToggleOn(Toggle toggle, bool on)
+        {
+            if (toggle == null) return;
+            toggle.SetIsOnWithoutNotify(on);
+        }
+
+        private static void StyleToggle(Toggle toggle, bool on)
+        {
+            if (toggle == null) return;
+            var txt = toggle.GetComponentInChildren<Text>();
+            if (txt != null)
+            {
+                txt.fontStyle = FontStyle.Normal;
+                txt.fontSize = Mathf.Max(16, txt.fontSize);
+                txt.color = on ? Color.white : TabInactiveTextColor;
+            }
+        }
+
+        private static void BindToggle(Toggle toggle, UnityEngine.Events.UnityAction<bool> action)
+        {
+            if (toggle == null) return;
+            toggle.onValueChanged.RemoveAllListeners();
+            toggle.onValueChanged.AddListener(action);
         }
 
         private void CopyLogIfShortcutPressed()

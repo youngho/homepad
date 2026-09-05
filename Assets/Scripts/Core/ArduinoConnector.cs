@@ -12,7 +12,14 @@ namespace Homepad.Core
     {
         Simulation = 0,
         Serial = 1,
-        Tcp = 2
+        Tcp = 2,
+        Mqtt = 3
+    }
+
+    public enum KocomLinkDevice
+    {
+        Arduino = 0,
+        Ew11 = 1
     }
 
     public class ArduinoConnector : MonoBehaviour
@@ -25,18 +32,34 @@ namespace Homepad.Core
         [SerializeField] private string arduinoIp = "192.168.0.100";
         [SerializeField] private int arduinoPort = 8080;
 
+        [Header("MQTT")]
+        [SerializeField] private string mqttHost = "192.168.0.100";
+        [SerializeField] private int mqttPort = 1883;
+        [SerializeField] private string mqttClientId = "homepad";
+        [SerializeField] private string mqttUser = "";
+        [SerializeField] private string mqttPassword = "";
+        [SerializeField] private string mqttTxTopic = "kocom/tx";
+        [SerializeField] private string mqttRxTopic = "kocom/rx";
+
         [Header("Serial")]
         [SerializeField] private string serialPortName = "";
         [SerializeField] private int serialBaudRate = 115200;
 
         [Header("Status")]
         [SerializeField] private bool isConnected;
+        [SerializeField] private string linkLabel = "장치";
 
         public ArduinoLinkMode LinkMode => linkMode;
         public string ArduinoIp => arduinoIp;
         public int ArduinoPort => arduinoPort;
+        public string MqttHost => mqttHost;
+        public int MqttPort => mqttPort;
+        public string MqttUser => mqttUser;
+        public string MqttTxTopic => mqttTxTopic;
+        public string MqttRxTopic => mqttRxTopic;
         public string SerialPortName => serialPortName;
         public int SerialBaudRate => serialBaudRate;
+        public string LinkLabel => linkLabel;
         public bool UseSimulationMode => linkMode == ArduinoLinkMode.Simulation;
         public bool IsConnected => UseSimulationMode || isConnected;
 
@@ -47,6 +70,7 @@ namespace Homepad.Core
         private TcpClient tcpClient;
         private NetworkStream networkStream;
         private NativeSerialPort serialPort;
+        private SimpleMqttClient mqttClient;
         private CancellationTokenSource cts;
         private readonly List<byte> receiveBuffer = new List<byte>(64);
         private readonly List<byte[]> extractedFrames = new List<byte[]>();
@@ -60,6 +84,11 @@ namespace Homepad.Core
         public static string[] ListSerialPorts()
         {
             return NativeSerialPort.GetPortNames();
+        }
+
+        public void SetLinkLabel(string label)
+        {
+            linkLabel = string.IsNullOrEmpty(label) ? "장치" : label;
         }
 
         public void SetTarget(string ip, int port, bool simulation)
@@ -79,6 +108,37 @@ namespace Homepad.Core
             {
                 ConnectToArduino();
             }
+        }
+
+        public void SetTcpTarget(string ip, int port)
+        {
+            arduinoIp = ip;
+            arduinoPort = port > 0 ? port : 8899;
+            linkMode = ArduinoLinkMode.Tcp;
+            PlayerPrefs.SetString("Homepad.TcpHost", arduinoIp);
+            PlayerPrefs.SetInt("Homepad.TcpPort", arduinoPort);
+            PlayerPrefs.Save();
+            ConnectToArduino();
+        }
+
+        public void SetMqttTarget(string host, int port, string user, string password, string txTopic, string rxTopic)
+        {
+            mqttHost = host;
+            mqttPort = port > 0 ? port : 1883;
+            mqttUser = user ?? string.Empty;
+            mqttPassword = password ?? string.Empty;
+            mqttTxTopic = string.IsNullOrEmpty(txTopic) ? "kocom/tx" : txTopic;
+            mqttRxTopic = string.IsNullOrEmpty(rxTopic) ? "kocom/rx" : rxTopic;
+            mqttClientId = "homepad-" + Environment.TickCount.ToString("x");
+            linkMode = ArduinoLinkMode.Mqtt;
+            PlayerPrefs.SetString("Homepad.MqttHost", mqttHost);
+            PlayerPrefs.SetInt("Homepad.MqttPort", mqttPort);
+            PlayerPrefs.SetString("Homepad.MqttUser", mqttUser);
+            PlayerPrefs.SetString("Homepad.MqttPass", mqttPassword);
+            PlayerPrefs.SetString("Homepad.MqttTx", mqttTxTopic);
+            PlayerPrefs.SetString("Homepad.MqttRx", mqttRxTopic);
+            PlayerPrefs.Save();
+            ConnectToArduino();
         }
 
         public void SetSerialTarget(string portName, int baudRate)
@@ -143,6 +203,10 @@ namespace Homepad.Core
             {
                 ConnectSerial(token);
             }
+            else if (linkMode == ArduinoLinkMode.Mqtt)
+            {
+                ConnectMqtt(token);
+            }
             else
             {
                 ConnectTcp(token);
@@ -159,15 +223,18 @@ namespace Homepad.Core
             var stream = networkStream;
             var client = tcpClient;
             var port = serialPort;
+            var mqtt = mqttClient;
             networkStream = null;
             tcpClient = null;
             serialPort = null;
+            mqttClient = null;
 
             Task.Run(() =>
             {
                 try { stream?.Close(); } catch { }
                 try { client?.Close(); } catch { }
                 try { port?.Dispose(); } catch { }
+                try { mqtt?.Dispose(); } catch { }
                 try { toCancel?.Dispose(); } catch { }
             });
 
@@ -204,6 +271,15 @@ namespace Homepad.Core
                             }
 
                             serialPort.Write(packet, 0, packet.Length);
+                        }
+                        else if (linkMode == ArduinoLinkMode.Mqtt)
+                        {
+                            if (mqttClient == null || !mqttClient.IsConnected)
+                            {
+                                throw new IOException("MQTT가 연결되어 있지 않습니다.");
+                            }
+
+                            mqttClient.Publish(mqttTxTopic, packet);
                         }
                         else
                         {
@@ -284,7 +360,7 @@ namespace Homepad.Core
                 {
                     UnityMainThreadDispatcher.Enqueue(() =>
                     {
-                        OnLogMessage?.Invoke($"[네트워크] 아두이노 UNO WiFi({arduinoIp}:{arduinoPort}) 접속 시도 중...", true);
+                        OnLogMessage?.Invoke($"[네트워크] {linkLabel} TCP({arduinoIp}:{arduinoPort}) 접속 시도 중...", true);
                     });
 
                     tcpClient = new TcpClient();
@@ -295,7 +371,7 @@ namespace Homepad.Core
                     UnityMainThreadDispatcher.Enqueue(() =>
                     {
                         OnConnectionStatusChanged?.Invoke(true);
-                        OnLogMessage?.Invoke($"[네트워크] 아두이노 연결 성공 ({arduinoIp}:{arduinoPort})", false);
+                        OnLogMessage?.Invoke($"[네트워크] {linkLabel} TCP 연결 성공 ({arduinoIp}:{arduinoPort})", false);
                     });
 
                     await TcpReceiveLoopAsync(token);
@@ -306,10 +382,144 @@ namespace Homepad.Core
                     {
                         isConnected = false;
                         OnConnectionStatusChanged?.Invoke(false);
-                        OnLogMessage?.Invoke($"[오류] 아두이노 연결 실패: {ex.Message}", false);
+                        OnLogMessage?.Invoke($"[오류] {linkLabel} TCP 연결 실패: {ex.Message}", false);
                     });
                 }
             }, token);
+        }
+
+        private void ConnectMqtt(CancellationToken token)
+        {
+            string host = mqttHost;
+            int port = mqttPort;
+            string user = mqttUser;
+            string pass = mqttPassword;
+            string clientId = mqttClientId;
+            string rxTopic = mqttRxTopic;
+            string txTopic = mqttTxTopic;
+            string label = linkLabel;
+
+            Task.Run(() =>
+            {
+                SimpleMqttClient mqtt = null;
+                try
+                {
+                    UnityMainThreadDispatcher.Enqueue(() =>
+                    {
+                        OnLogMessage?.Invoke($"[MQTT] {label} {host}:{port} 접속 시도... 송신 {txTopic} / 수신 {rxTopic}", true);
+                    });
+
+                    mqtt = new SimpleMqttClient();
+                    mqtt.Connect(host, port, clientId, user, pass, 60, token);
+                    mqtt.Subscribe(rxTopic, token);
+                    mqttClient = mqtt;
+                    isConnected = true;
+
+                    UnityMainThreadDispatcher.Enqueue(() =>
+                    {
+                        OnConnectionStatusChanged?.Invoke(true);
+                        OnLogMessage?.Invoke($"[MQTT] {label} 연결 성공 ({host}:{port})", false);
+                    });
+
+                    MqttReceiveLoop(mqtt, token);
+                }
+                catch (Exception ex)
+                {
+                    try { mqtt?.Dispose(); } catch { }
+                    UnityMainThreadDispatcher.Enqueue(() =>
+                    {
+                        isConnected = false;
+                        OnConnectionStatusChanged?.Invoke(false);
+                        OnLogMessage?.Invoke($"[오류] MQTT 연결 실패: {ex.Message}", false);
+                    });
+                }
+            }, token);
+        }
+
+        private void MqttReceiveLoop(SimpleMqttClient mqtt, CancellationToken token)
+        {
+            DateTime lastPing = DateTime.UtcNow;
+            try
+            {
+                while (!token.IsCancellationRequested && mqtt != null && mqtt.IsConnected)
+                {
+                    try
+                    {
+                        if (mqtt.TryReadPublish(out string topic, out byte[] payload, token)
+                            && payload != null
+                            && payload.Length > 0)
+                        {
+                            byte[] bytes = DecodeMqttPayload(payload);
+                            if (bytes != null && bytes.Length > 0)
+                            {
+                                DispatchReceived(bytes, bytes.Length);
+                            }
+                        }
+                    }
+                    catch (IOException ex) when (IsTimeout(ex))
+                    {
+                        if ((DateTime.UtcNow - lastPing).TotalSeconds >= 30)
+                        {
+                            mqtt.Ping();
+                            lastPing = DateTime.UtcNow;
+                        }
+                    }
+
+                    if ((DateTime.UtcNow - lastPing).TotalSeconds >= 45)
+                    {
+                        mqtt.Ping();
+                        lastPing = DateTime.UtcNow;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+            }
+            finally
+            {
+                NotifyDisconnected($"[MQTT] {linkLabel} 연결이 종료되었습니다.");
+            }
+        }
+
+        private static bool IsTimeout(Exception ex)
+        {
+            if (ex is SocketException se && se.SocketErrorCode == SocketError.TimedOut) return true;
+            string msg = ex.Message ?? string.Empty;
+            return msg.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0
+                || msg.IndexOf("시간", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static byte[] DecodeMqttPayload(byte[] payload)
+        {
+            if (payload == null || payload.Length == 0) return payload;
+            if (payload.Length >= KocomProtocol.PacketSize && payload[0] == KocomProtocol.Header1)
+            {
+                return payload;
+            }
+
+            string text = System.Text.Encoding.ASCII.GetString(payload).Trim();
+            if (text.Length < 2) return payload;
+            bool looksHex = true;
+            int hexChars = 0;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+                if (c == ' ' || c == '-' || c == ':') continue;
+                bool hex = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f');
+                if (!hex)
+                {
+                    looksHex = false;
+                    break;
+                }
+
+                hexChars++;
+            }
+
+            if (!looksHex || hexChars < 4) return payload;
+            return KocomHexPresets.HexStringToBytes(text);
         }
 
         private void SerialReceiveLoop(CancellationToken token)
@@ -380,7 +590,7 @@ namespace Homepad.Core
             }
             finally
             {
-                NotifyDisconnected("[네트워크] 아두이노와의 연결이 종료되었습니다.");
+                NotifyDisconnected($"[네트워크] {linkLabel} TCP 연결이 종료되었습니다.");
             }
         }
 
