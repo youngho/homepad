@@ -221,6 +221,142 @@ namespace Homepad.Core
             return sb.ToString();
         }
 
+        public readonly struct HexTableField
+        {
+            public readonly string Label;
+            public readonly string Hex;
+            public readonly string Hint;
+            public readonly bool Expand;
+
+            public HexTableField(string label, string hex, string hint = null, bool expand = false)
+            {
+                Label = label;
+                Hex = hex ?? string.Empty;
+                Hint = hint ?? string.Empty;
+                Expand = expand;
+            }
+
+            public string Caption => string.IsNullOrEmpty(Hint) ? Label : Label + " | " + Hint;
+        }
+
+        public static HexTableField[] GetHexTableFields(byte[] packet)
+        {
+            if (packet == null || packet.Length < PacketSize) return Array.Empty<HexTableField>();
+
+            ushort type = ReadUInt16(packet, 2);
+            ushort addr1 = ReadUInt16(packet, 4);
+            ushort addr2 = ReadUInt16(packet, 6);
+            ushort cmd = ReadUInt16(packet, 8);
+            bool checksumOk = ComputeChecksum(packet) == packet[18];
+
+            return new[]
+            {
+                new HexTableField("HDR", HexPair(packet, 0)),
+                new HexTableField("TYPE", HexPair(packet, 2), DescribeType(type)),
+                new HexTableField("DEV", HexPair(packet, 4), DescribeDevice(addr1)),
+                new HexTableField("ADDR", HexPair(packet, 6), DescribeAddr(addr2)),
+                new HexTableField("CMD", HexPair(packet, 8), DescribeCommand(cmd)),
+                new HexTableField("VAL", ToHexSlice(packet, 10, 8), null, true),
+                new HexTableField("CS", packet[18].ToString("X2"), checksumOk ? string.Empty : "오류"),
+                new HexTableField("END", HexPair(packet, 19))
+            };
+        }
+
+        public static string FormatHexTable(byte[] packet)
+        {
+            var fields = GetHexTableFields(packet);
+            if (fields.Length == 0) return ToHexString(packet);
+
+            var hexRow = new StringBuilder();
+            var capRow = new StringBuilder();
+            for (int i = 0; i < fields.Length; i++)
+            {
+                if (i > 0)
+                {
+                    hexRow.Append(" │ ");
+                    capRow.Append(" │ ");
+                }
+
+                hexRow.Append(fields[i].Hex);
+                capRow.Append(fields[i].Caption);
+            }
+
+            return hexRow.Append('\n').Append(capRow).ToString();
+        }
+
+        private static string HexPair(byte[] packet, int index)
+        {
+            return $"{packet[index]:X2} {packet[index + 1]:X2}";
+        }
+
+        private static string ToHexSlice(byte[] packet, int start, int length)
+        {
+            var sb = new StringBuilder(length * 3);
+            for (int i = 0; i < length; i++)
+            {
+                if (i > 0) sb.Append(' ');
+                sb.Append(packet[start + i].ToString("X2"));
+            }
+            return sb.ToString();
+        }
+
+        private static string DescribeType(ushort type)
+        {
+            return type switch
+            {
+                TypeTransmit => "요청",
+                TypeReport => "상태",
+                0x30BD => "재전송1",
+                0x30BE => "재전송2",
+                _ => string.Empty
+            };
+        }
+
+        private static string DescribeDevice(ushort address)
+        {
+            return address switch
+            {
+                DeviceLight => "조명",
+                DeviceHeating => "난방",
+                DeviceVentilation => "환기",
+                DeviceDoorLock => "도어락",
+                DeviceGas => "가스",
+                DeviceElevator => "엘리베이터",
+                AddressWallpad => "월패드",
+                _ => string.Empty
+            };
+        }
+
+        private static string DescribeAddr(ushort address)
+        {
+            string device = DescribeDevice(address);
+            if (!string.IsNullOrEmpty(device) && address != AddressWallpad)
+            {
+                return device;
+            }
+
+            return address switch
+            {
+                0x0001 => "거실",
+                0x0101 => "방1",
+                0x0201 => "방2",
+                0x0301 => "방3",
+                _ => string.Empty
+            };
+        }
+
+        private static string DescribeCommand(ushort command)
+        {
+            return command switch
+            {
+                0x0000 => "제어",
+                0x003A => "조회",
+                0x0001 => "상태",
+                0x0002 => "열림요청",
+                _ => string.Empty
+            };
+        }
+
         public static string DecodeFrame(Frame frame)
         {
             string typeStr = frame.type switch

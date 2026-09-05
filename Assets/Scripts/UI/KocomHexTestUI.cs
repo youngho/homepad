@@ -23,6 +23,10 @@ namespace Homepad.UI
         private static readonly Color MutedRed = new Color(0.753f, 0.337f, 0.337f, 1f);
         private static readonly Color HexCodeCyan = new Color(0.43f, 0.65f, 0.84f, 1f);
         private static readonly Color LogSelectionColor = new Color(0.32f, 0.52f, 0.82f, 0.4f);
+        private static readonly Color HexTableLine = new Color(0.55f, 0.55f, 0.55f, 1f);
+        private static readonly Color HexTableFill = new Color(0.12f, 0.13f, 0.15f, 1f);
+        private static readonly Color HexTableHex = new Color(0.90f, 0.90f, 0.90f, 1f);
+        private static readonly Color HexTableLabel = new Color(0.66f, 0.66f, 0.66f, 1f);
 
         [Header("Serial Connection")]
         [SerializeField] private InputField portField;
@@ -68,7 +72,7 @@ namespace Homepad.UI
         private int logLineCount;
         private string[] ports = new string[0];
         private int portIndex;
-        private const int MaxLogLines = 120;
+        private const int MaxLogLines = 80;
         private HexCategory currentCategory = HexCategory.All;
         private Font uiFont;
         private Font uiFontBold;
@@ -84,6 +88,8 @@ namespace Homepad.UI
         private float logSelXFrom;
         private float logSelXTo;
         private readonly List<UILineInfo> logLineInfos = new List<UILineInfo>();
+        private readonly List<GameObject> logEntries = new List<GameObject>();
+        private readonly List<string> logPlainEntries = new List<string>();
         private bool logFollowTail = true;
 
         private void Awake()
@@ -259,13 +265,39 @@ namespace Homepad.UI
             logText.horizontalOverflow = HorizontalWrapMode.Wrap;
             logText.verticalOverflow = VerticalWrapMode.Overflow;
             logText.alignment = TextAnchor.UpperLeft;
+            logText.enabled = false;
 
-            var rt = logText.rectTransform;
-            rt.anchorMin = new Vector2(0f, 1f);
-            rt.anchorMax = new Vector2(1f, 1f);
-            rt.pivot = new Vector2(0.5f, 1f);
-            rt.offsetMin = new Vector2(12f, rt.offsetMin.y);
-            rt.offsetMax = new Vector2(-12f, -8f);
+            var logLe = logText.GetComponent<LayoutElement>();
+            if (logLe == null) logLe = logText.gameObject.AddComponent<LayoutElement>();
+            logLe.ignoreLayout = true;
+            logLe.minHeight = 0f;
+            logLe.preferredHeight = 0f;
+
+            var content = LogScrollContent();
+            if (content != null)
+            {
+                content.anchorMin = new Vector2(0f, 1f);
+                content.anchorMax = new Vector2(1f, 1f);
+                content.pivot = new Vector2(0.5f, 1f);
+                content.offsetMin = new Vector2(0f, content.offsetMin.y);
+                content.offsetMax = new Vector2(0f, 0f);
+
+                var vg = content.GetComponent<VerticalLayoutGroup>();
+                if (vg == null) vg = content.gameObject.AddComponent<VerticalLayoutGroup>();
+                vg.padding = new RectOffset(12, 12, 8, 8);
+                vg.spacing = 10f;
+                vg.childAlignment = TextAnchor.UpperLeft;
+                vg.childControlWidth = true;
+                vg.childControlHeight = true;
+                vg.childForceExpandWidth = true;
+                vg.childForceExpandHeight = false;
+
+                var fitter = content.GetComponent<ContentSizeFitter>();
+                if (fitter == null) fitter = content.gameObject.AddComponent<ContentSizeFitter>();
+                fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+                fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+                fitter.enabled = true;
+            }
 
             if (logScrollRect != null)
             {
@@ -275,15 +307,15 @@ namespace Homepad.UI
                 {
                     logScrollRect.viewport = logScrollRect.GetComponent<RectTransform>();
                 }
-
-                if (logScrollRect.content != null)
-                {
-                    var fitter = logScrollRect.content.GetComponent<ContentSizeFitter>();
-                    if (fitter != null) fitter.enabled = false;
-                }
             }
 
             EnsureLogHighlightRoot();
+            if (logHighlightRoot != null)
+            {
+                var hlLe = logHighlightRoot.GetComponent<LayoutElement>();
+                if (hlLe == null) hlLe = logHighlightRoot.gameObject.AddComponent<LayoutElement>();
+                hlLe.ignoreLayout = true;
+            }
         }
 
         private IEnumerator WatchUsbRoutine()
@@ -517,7 +549,7 @@ namespace Homepad.UI
         public void SendPreset(HexPreset preset)
         {
             if (preset == null) return;
-            AppendLog($"<b>{preset.title}</b>\n              <color=#6DA6D6>{preset.hexString}</color>", true);
+            AppendLog($"<b>{preset.title}</b>", true, KocomHexPresets.HexStringToBytes(preset.hexString));
             SendRawHex(preset.hexString);
         }
 
@@ -537,7 +569,7 @@ namespace Homepad.UI
             }
             else
             {
-                AppendLog($"<color=#5A98D4>[시뮬레이션 전송] {KocomProtocol.ToHexString(bytes)}</color>", false);
+                AppendLog("<color=#5A98D4>[시뮬레이션 전송]</color>", false, bytes);
             }
         }
 
@@ -555,7 +587,7 @@ namespace Homepad.UI
             string hex = customHexInput.text.Trim();
             if (string.IsNullOrEmpty(hex)) return;
 
-            AppendLog($"<b>[커스텀 직접전송]</b>\n              <color=#6DA6D6>{hex}</color>", true);
+            AppendLog("<b>[커스텀 직접전송]</b>", true, KocomHexPresets.HexStringToBytes(hex));
             SendRawHex(hex);
         }
 
@@ -563,15 +595,14 @@ namespace Homepad.UI
         {
             if (packet == null || packet.Length < KocomProtocol.PacketSize) return;
 
-            string hexStr = KocomProtocol.ToHexString(packet);
             if (KocomProtocol.TryParse(packet, out var frame))
             {
                 string decoded = KocomProtocol.DecodeFrame(frame);
-                AppendLog($"<color=#5CAE7C>[RX 수신] {decoded}</color>\n              <color=#7E8794>HEX: {hexStr}</color>", false);
+                AppendLog($"<color=#5CAE7C>[RX 수신] {decoded}</color>", false, packet);
             }
             else
             {
-                AppendLog($"<color=#E5B550>[RX 알수없는 패킷] {hexStr}</color>", false);
+                AppendLog("<color=#E5B550>[RX 알수없는 패킷]</color>", false, packet);
             }
         }
 
@@ -579,6 +610,13 @@ namespace Homepad.UI
         {
             logBuilder.Clear();
             logLineCount = 0;
+            for (int i = 0; i < logEntries.Count; i++)
+            {
+                if (logEntries[i] != null) Destroy(logEntries[i]);
+            }
+
+            logEntries.Clear();
+            logPlainEntries.Clear();
             if (logText != null) logText.text = string.Empty;
             logFollowTail = true;
             ClearLogSelection();
@@ -586,40 +624,211 @@ namespace Homepad.UI
 
         private void AppendLog(string message, bool isTx)
         {
+            AppendLog(message, isTx, null);
+        }
+
+        private void AppendLog(string message, bool isTx, byte[] packet)
+        {
             string color = isTx ? "#FFFFFF" : "#CCCCCC";
             string time = DateTime.Now.ToString("HH:mm:ss.fff");
-            string line = $"<color=#7E8794>[{time}]</color> <color={color}>{message}</color>\n";
+            string line = $"<color=#7E8794>[{time}]</color> <color={color}>{message}</color>";
 
-            logBuilder.Append(line);
+            string plain = StripRichText(line);
+            if (packet != null && packet.Length >= KocomProtocol.PacketSize)
+            {
+                plain += "\n" + KocomProtocol.FormatHexTable(packet);
+            }
+
+            logPlainEntries.Add(plain);
             logLineCount++;
+            CreateLogEntry(line, packet);
 
-            if (logLineCount > MaxLogLines)
+            while (logEntries.Count > MaxLogLines)
             {
-                string current = logBuilder.ToString();
-                int newline = current.IndexOf('\n');
-                if (newline >= 0)
+                var oldest = logEntries[0];
+                logEntries.RemoveAt(0);
+                if (logPlainEntries.Count > 0) logPlainEntries.RemoveAt(0);
+                if (oldest != null)
                 {
-                    logBuilder.Remove(0, newline + 1);
-                    logLineCount--;
+                    oldest.transform.SetParent(null, false);
+                    Destroy(oldest);
                 }
+
+                logLineCount--;
             }
 
-            if (logText != null)
-            {
-                logText.verticalOverflow = VerticalWrapMode.Overflow;
-                logText.text = logBuilder.ToString();
-                float height = Mathf.Max(logText.preferredHeight + 24f, 80f);
-                logText.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
-                var content = logText.transform.parent as RectTransform;
-                if (content != null)
-                {
-                    content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
-                }
-            }
-
+            RebuildLogBuilder();
             if (logFollowTail) PinLogToBottom();
-
             ClearLogSelection();
+        }
+
+        private void RebuildLogBuilder()
+        {
+            logBuilder.Clear();
+            for (int i = 0; i < logPlainEntries.Count; i++)
+            {
+                logBuilder.Append(logPlainEntries[i]).Append('\n');
+            }
+        }
+
+        private void CreateLogEntry(string headerRich, byte[] packet)
+        {
+            var content = LogScrollContent();
+            if (content == null) return;
+
+            var entry = new GameObject("LogEntry", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+            entry.transform.SetParent(content, false);
+            logEntries.Add(entry);
+
+            var vg = entry.GetComponent<VerticalLayoutGroup>();
+            vg.padding = new RectOffset(0, 0, 0, 0);
+            vg.spacing = 6f;
+            vg.childAlignment = TextAnchor.UpperLeft;
+            vg.childControlWidth = true;
+            vg.childControlHeight = true;
+            vg.childForceExpandWidth = true;
+            vg.childForceExpandHeight = false;
+
+            var le = entry.GetComponent<LayoutElement>();
+            le.flexibleWidth = 1f;
+
+            var header = CreateUiText(entry.transform, "Header", HeaderFont(), 18, new Color(0.8f, 0.8f, 0.8f, 1f));
+            header.supportRichText = true;
+            header.alignment = TextAnchor.UpperLeft;
+            header.horizontalOverflow = HorizontalWrapMode.Wrap;
+            header.verticalOverflow = VerticalWrapMode.Overflow;
+            header.text = headerRich;
+
+            var headerLe = header.gameObject.AddComponent<LayoutElement>();
+            headerLe.minHeight = 24f;
+            headerLe.flexibleWidth = 1f;
+            var headerFit = header.gameObject.AddComponent<ContentSizeFitter>();
+            headerFit.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            headerFit.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            if (packet != null && packet.Length >= KocomProtocol.PacketSize)
+            {
+                BuildHexTable(entry.transform, packet);
+            }
+        }
+
+        private Font HeaderFont()
+        {
+            if (uiFont != null) return uiFont;
+            if (logText != null && logText.font != null) return logText.font;
+            return uiFontBold;
+        }
+
+        private Font TableHexFont()
+        {
+            if (uiFontBold != null) return uiFontBold;
+            return HeaderFont();
+        }
+
+        private void BuildHexTable(Transform parent, byte[] packet)
+        {
+            var fields = KocomProtocol.GetHexTableFields(packet);
+            if (fields == null || fields.Length == 0) return;
+
+            var table = new GameObject("HexTable", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+            table.transform.SetParent(parent, false);
+
+            var tableImg = table.GetComponent<Image>();
+            tableImg.color = HexTableLine;
+            tableImg.raycastTarget = false;
+
+            var hlg = table.GetComponent<HorizontalLayoutGroup>();
+            hlg.padding = new RectOffset(1, 1, 1, 1);
+            hlg.spacing = 1f;
+            hlg.childAlignment = TextAnchor.MiddleLeft;
+            hlg.childControlWidth = true;
+            hlg.childControlHeight = true;
+            hlg.childForceExpandWidth = false;
+            hlg.childForceExpandHeight = true;
+
+            var tableLe = table.GetComponent<LayoutElement>();
+            tableLe.minHeight = 58f;
+            tableLe.preferredHeight = 58f;
+            tableLe.flexibleWidth = 1f;
+
+            for (int i = 0; i < fields.Length; i++)
+            {
+                BuildHexTableCell(table.transform, fields[i]);
+            }
+        }
+
+        private void BuildHexTableCell(Transform parent, KocomProtocol.HexTableField field)
+        {
+            var cell = new GameObject(field.Label, typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+            cell.transform.SetParent(parent, false);
+
+            var img = cell.GetComponent<Image>();
+            img.color = HexTableFill;
+            img.raycastTarget = false;
+
+            var vlg = cell.GetComponent<VerticalLayoutGroup>();
+            vlg.padding = new RectOffset(8, 8, 4, 4);
+            vlg.spacing = 0f;
+            vlg.childAlignment = TextAnchor.MiddleCenter;
+            vlg.childControlWidth = true;
+            vlg.childControlHeight = true;
+            vlg.childForceExpandWidth = true;
+            vlg.childForceExpandHeight = false;
+
+            var le = cell.GetComponent<LayoutElement>();
+            if (field.Expand)
+            {
+                le.minWidth = 150f;
+                le.flexibleWidth = 1f;
+            }
+            else
+            {
+                float min = field.Caption.Length >= 8 ? 96f : 52f;
+                le.minWidth = min;
+                le.preferredWidth = min;
+                le.flexibleWidth = 0.12f;
+            }
+
+            var hex = CreateUiText(cell.transform, "Hex", TableHexFont(), 16, HexTableHex);
+            hex.alignment = TextAnchor.MiddleCenter;
+            hex.horizontalOverflow = HorizontalWrapMode.Overflow;
+            hex.text = field.Hex;
+            var hexLe = hex.gameObject.AddComponent<LayoutElement>();
+            hexLe.minHeight = 22f;
+            hexLe.preferredHeight = 22f;
+
+            var rule = new GameObject("Rule", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
+            rule.transform.SetParent(cell.transform, false);
+            var ruleImg = rule.GetComponent<Image>();
+            ruleImg.color = HexTableLine;
+            ruleImg.raycastTarget = false;
+            var ruleLe = rule.GetComponent<LayoutElement>();
+            ruleLe.minHeight = 1f;
+            ruleLe.preferredHeight = 1f;
+            ruleLe.flexibleWidth = 1f;
+
+            var cap = CreateUiText(cell.transform, "Caption", HeaderFont(), 16, HexTableLabel);
+            cap.alignment = TextAnchor.MiddleCenter;
+            cap.horizontalOverflow = HorizontalWrapMode.Overflow;
+            cap.text = field.Caption;
+            var capLe = cap.gameObject.AddComponent<LayoutElement>();
+            capLe.minHeight = 22f;
+            capLe.preferredHeight = 22f;
+        }
+
+        private static Text CreateUiText(Transform parent, string name, Font font, int fontSize, Color color)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(Text));
+            go.transform.SetParent(parent, false);
+            var text = go.GetComponent<Text>();
+            text.font = font;
+            text.fontSize = Mathf.Max(16, fontSize);
+            text.fontStyle = FontStyle.Normal;
+            text.color = color;
+            text.raycastTarget = false;
+            text.supportRichText = false;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            return text;
         }
 
         private void HandleLogMouseScroll(Vector2 screenPos, Mouse mouse)
@@ -640,6 +849,8 @@ namespace Homepad.UI
         {
             var content = LogScrollContent();
             if (content == null) return;
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
             content.anchoredPosition = new Vector2(content.anchoredPosition.x, ClampLogScroll(float.MaxValue));
         }
 
