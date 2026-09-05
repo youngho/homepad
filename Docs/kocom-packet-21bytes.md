@@ -54,7 +54,7 @@ public static byte ComputeChecksum(byte[] packet)
 |---|---|---|
 | `30 BC` | 요청(REQ) | 월패드가 보내는 제어/조회 |
 | `30 DC` | 상태(STA) | 장치가 보내는 상태 보고 |
-| `30 BD` | 재전송1(30BD) | 같은 내용 재전송 |
+| `30 BD` | 재전송1(30BD) | 같은 내용 재전송. 항상 세 번은 아님. `Docs/kocom-light-control.md` |
 | `30 BE` | 재전송2(30BE) | 한 번 더 재전송 |
 
 코드 상수:
@@ -120,7 +120,7 @@ public static byte ComputeChecksum(byte[] packet)
 | 16 | `[6]` | 스위치 7 |
 | 17 | `[7]` | 스위치 8 |
 
-같은 방의 스위치를 한 패킷에 같이 담는다. `FF FF 00 …` 이면 1·2번만 켜진 상태다.
+같은 방의 스위치를 한 패킷에 같이 담는다. `FF FF 00 …` 이면 1·2번만 켜진 상태다. 스위치 하나만 켜는 명령은 없고, 빈 칸 `00`은 그 슬롯을 끈다. 조회 없이 `30 BC`를 갑자기 넣으면 월패드가 그 방에서 멈출 수 있다. 규칙은 `Docs/kocom-light-control.md`.
 
 ### 난방 (`00 36`)
 
@@ -200,5 +200,6 @@ AA 55 30 BC 00 48 00 01 00 00 11 03 40 00 00 00 00 00 89 0D 0D
 | `Assets/Scripts/UI/KocomHexTestUI.cs` | `[RX 수신]` 녹색 로그 표시 |
 | `Assets/Scripts/Core/WallpadManager.cs` | 수신 프레임을 집 상태에 반영 |
 | `Docs/kocom-hex.md` | 장치별 HEX 프리셋 목록 |
+| `Docs/kocom-light-control.md` | 조명 비트맵, 조회 후 제어, `30 BD`/`30 BE` 재전송 |
 
 핵심: **앞 10바이트(0–9)는 모든 장치가 같은 껍데기**이고, **바이트 10–17만 장치별로 의미가 바뀐다.**
