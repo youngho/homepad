@@ -1,3 +1,4 @@
+using Homepad.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -21,6 +22,7 @@ namespace Homepad.UI
         private float target;
         private bool dragging;
         private bool maybeDrag;
+        private bool nativeEdgeDrag;
         private float dragStartX;
         private float dragStartY;
         private float dragStartProgress;
@@ -54,12 +56,23 @@ namespace Homepad.UI
             Apply(1f);
         }
 
+        private void OnEnable()
+        {
+            IosScreenEdgePan.AddListener(OnIosRightEdgePan);
+        }
+
+        private void OnDisable()
+        {
+            IosScreenEdgePan.RemoveListener(OnIosRightEdgePan);
+        }
+
         public void Open()
         {
             GetComponentInParent<DeviceOverlayUI>()?.Hide();
             if (settingsPanel != null) settingsPanel.SetActive(false);
             dragging = false;
             maybeDrag = false;
+            nativeEdgeDrag = false;
             target = 1f;
         }
 
@@ -67,6 +80,7 @@ namespace Homepad.UI
         {
             dragging = false;
             maybeDrag = false;
+            nativeEdgeDrag = false;
             target = 0f;
         }
 
@@ -85,8 +99,50 @@ namespace Homepad.UI
             }
         }
 
+        private void OnIosRightEdgePan(int state, float translationX, float translationY, float velocityX)
+        {
+            if (settingsPanel != null && settingsPanel.activeInHierarchy) return;
+
+            if (state == IosScreenEdgePan.StateBegan)
+            {
+                if (IsOpen) return;
+                GetComponentInParent<DeviceOverlayUI>()?.Hide();
+                nativeEdgeDrag = true;
+                dragging = true;
+                maybeDrag = false;
+                dragStartProgress = progress;
+            }
+
+            if (!nativeEdgeDrag) return;
+
+            if (state == IosScreenEdgePan.StateBegan || state == IosScreenEdgePan.StateChanged)
+            {
+                progress = Mathf.Clamp01(dragStartProgress + (-translationX / Mathf.Max(80f, width)));
+                target = progress;
+                Apply(1f);
+                return;
+            }
+
+            if (state == IosScreenEdgePan.StateEnded)
+            {
+                if (velocityX < -700f) target = 1f;
+                else if (velocityX > 700f) target = 0f;
+                else target = progress >= snap ? 1f : 0f;
+            }
+            else
+            {
+                target = progress >= snap ? 1f : 0f;
+            }
+
+            dragging = false;
+            maybeDrag = false;
+            nativeEdgeDrag = false;
+        }
+
         private void HandlePointer()
         {
+            if (nativeEdgeDrag) return;
+
             if (!TryPointer(out Vector2 pos, out bool down, out bool held, out bool up))
             {
                 if (dragging || maybeDrag)
@@ -115,7 +171,7 @@ namespace Homepad.UI
                     dragStartY = pos.y;
                     dragStartProgress = progress;
                 }
-                else if (pos.x >= Screen.width - edgeGrabPx && pos.y < Screen.height - 110f)
+                else if (!IosScreenEdgePan.IsAvailable && pos.x >= Screen.width - edgeGrabPx && pos.y < Screen.height - 110f)
                 {
                     dragging = true;
                     maybeDrag = false;
