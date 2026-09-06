@@ -95,6 +95,9 @@ namespace Homepad.UI
             catalogDrawer?.Close();
             overlay?.Hide();
             if (settingsPanel != null) settingsPanel.SetActive(true);
+            var settingsUi = GetComponent<NetworkSettingsUI>()
+                             ?? GetComponentInChildren<NetworkSettingsUI>(true);
+            settingsUi?.EnsureReady();
         }
 
         private void CloseSettings()

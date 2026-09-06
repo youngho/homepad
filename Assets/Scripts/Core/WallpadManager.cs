@@ -68,19 +68,31 @@ namespace Homepad.Core
                 config = WallpadConfig.CreateRuntimeDefault();
             }
 
-            if (connector == null)
-            {
-                connector = GetComponent<ArduinoConnector>();
-                if (connector == null) connector = gameObject.AddComponent<ArduinoConnector>();
-            }
-
+            EnsureConnector();
             InitializeFromConfig();
-            connector.OnPacketReceived += HandlePacketReceived;
-            connector.OnConnectionStatusChanged += HandleConnectionChanged;
             if (connector.IsConnected)
             {
                 HandleConnectionChanged(true);
             }
+        }
+
+        public ArduinoConnector EnsureConnector()
+        {
+            if (!connector)
+            {
+                connector = GetComponent<ArduinoConnector>();
+            }
+
+            if (!connector)
+            {
+                connector = gameObject.AddComponent<ArduinoConnector>();
+            }
+
+            connector.OnPacketReceived -= HandlePacketReceived;
+            connector.OnConnectionStatusChanged -= HandleConnectionChanged;
+            connector.OnPacketReceived += HandlePacketReceived;
+            connector.OnConnectionStatusChanged += HandleConnectionChanged;
+            return connector;
         }
 
         private void OnDestroy()

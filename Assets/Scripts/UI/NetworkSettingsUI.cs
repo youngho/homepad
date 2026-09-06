@@ -49,7 +49,7 @@ namespace Homepad.UI
         private string[] ports = new string[0];
         private int portIndex;
         private string[] lastSeenPorts = new string[0];
-        private ArduinoConnector connector;
+        [SerializeField] private ArduinoConnector connector;
         private KocomLinkDevice linkDevice = KocomLinkDevice.Arduino;
         private ArduinoLinkMode linkProtocol = ArduinoLinkMode.Serial;
         private ArduinoLinkMode arduinoProtocol = ArduinoLinkMode.Serial;
@@ -64,8 +64,7 @@ namespace Homepad.UI
 
         private void Start()
         {
-            BindEvents();
-            HookConnector();
+            EnsureReady();
             LoadLinkPrefs();
             if (linkProtocol == ArduinoLinkMode.Serial)
             {
@@ -93,13 +92,12 @@ namespace Homepad.UI
         {
             if (settingsRoot == null)
             {
-                var settings = transform.Find("Settings");
-                if (settings != null) settingsRoot = settings;
+                settingsRoot = FindChildEvenIfInactive(transform, "Settings");
             }
 
             if (logPanel == null)
             {
-                var logRt = transform.Find("HexLog");
+                var logRt = FindChildEvenIfInactive(transform, "HexLog");
                 if (logRt != null) logPanel = logRt.gameObject;
             }
 
@@ -138,7 +136,25 @@ namespace Homepad.UI
         {
             var found = FindIn<T>(settingsRoot, objectName);
             if (found != null) return found;
-            return FindIn<T>(logPanel != null ? logPanel.transform : null, objectName);
+            if (logPanel != null)
+            {
+                found = FindIn<T>(logPanel.transform, objectName);
+                if (found != null) return found;
+            }
+
+            return FindIn<T>(transform, objectName);
+        }
+
+        private static Transform FindChildEvenIfInactive(Transform root, string objectName)
+        {
+            if (root == null) return null;
+            var transforms = root.GetComponentsInChildren<Transform>(true);
+            for (int i = 0; i < transforms.Length; i++)
+            {
+                if (transforms[i].name == objectName) return transforms[i];
+            }
+
+            return null;
         }
 
         private static T FindIn<T>(Transform root, string objectName) where T : Component // scoped lookup
@@ -153,6 +169,13 @@ namespace Homepad.UI
             }
 
             return null;
+        }
+
+        public void EnsureReady()
+        {
+            AutoResolveUiReferences();
+            BindEvents();
+            HookConnector();
         }
 
         private void BindEvents()
@@ -185,14 +208,22 @@ namespace Homepad.UI
 
         private ArduinoConnector GetConnector()
         {
-            if (connector != null) return connector;
-            if (WallpadManager.Instance != null && WallpadManager.Instance.Connector != null)
+            if (connector) return connector;
+
+            if (WallpadManager.Instance != null)
             {
-                connector = WallpadManager.Instance.Connector;
-                return connector;
+                connector = WallpadManager.Instance.EnsureConnector();
+                if (connector) return connector;
             }
 
-            connector = FindFirstObjectByType<ArduinoConnector>();
+            connector = FindFirstObjectByType<ArduinoConnector>(FindObjectsInactive.Include);
+            if (connector) return connector;
+
+            var host = WallpadManager.Instance != null
+                ? WallpadManager.Instance.gameObject
+                : gameObject;
+            connector = host.GetComponent<ArduinoConnector>();
+            if (!connector) connector = host.AddComponent<ArduinoConnector>();
             return connector;
         }
 

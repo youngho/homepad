@@ -726,6 +726,7 @@ MonoBehaviour:
   logText: {fileID: 0}
   logScrollRect: {fileID: 0}
   clearLogButton: {fileID: 0}
+  connector: {fileID: 200003}
 --- !u!1 &20631853
 GameObject:
   m_ObjectHideFlags: 0
