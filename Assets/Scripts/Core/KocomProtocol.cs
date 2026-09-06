@@ -36,6 +36,8 @@ namespace Homepad.Core
         public const byte HeatPowerOff1 = 0x01;
         public const byte HeatAway0 = 0x11;
         public const byte HeatAway1 = 0x01;
+        public const ushort CommandControl = 0x0000;
+        public const ushort CommandQuery = 0x003A;
 
         public struct Frame
         {
@@ -88,6 +90,43 @@ namespace Homepad.Core
             packet[19] = Trailer;
             packet[20] = Trailer;
             return packet;
+        }
+
+        public static byte[] CreateStatusQueryPacket(ushort device, ushort room)
+        {
+            return BuildFrame(room, CommandQuery, new byte[8], device, TypeTransmit);
+        }
+
+        public static bool IsQuery(Frame frame)
+        {
+            return frame.room == CommandQuery;
+        }
+
+        public static bool IsKnownRoom(ushort address)
+        {
+            return address == 0x0001 || address == 0x0101 || address == 0x0201 || address == 0x0301;
+        }
+
+        public static ushort ResolveRoom(Frame frame)
+        {
+            if (frame.room != CommandControl && frame.room != CommandQuery && IsKnownRoom(frame.room))
+            {
+                return frame.room;
+            }
+
+            if (IsKnownDevice(frame.source) && IsKnownRoom(frame.destination))
+            {
+                return frame.destination;
+            }
+
+            if (IsKnownDevice(frame.destination) && IsKnownRoom(frame.source))
+            {
+                return frame.source;
+            }
+
+            if (IsKnownRoom(frame.destination)) return frame.destination;
+            if (IsKnownRoom(frame.source)) return frame.source;
+            return frame.room;
         }
 
         public static byte[] CreateLightRoomPacket(ushort room, IReadOnlyList<LightState> lightsInRoom)

@@ -67,6 +67,11 @@ namespace Homepad.Core
         public event Action<byte[]> OnPacketReceived;
         public event Action<string, bool> OnLogMessage;
 
+        public void NotifyLog(string message, bool isTx)
+        {
+            OnLogMessage?.Invoke(message, isTx);
+        }
+
         private TcpClient tcpClient;
         private NetworkStream networkStream;
         private NativeSerialPort serialPort;
