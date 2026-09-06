@@ -148,6 +148,12 @@ namespace Homepad.UI
                     if (item.Kind != HomeItemKind.Light) continue;
                     if (HomeItemDef.RoomCode(item.RoomHint) != roomCode) continue;
                     var state = FindLight(manager.Lights, item.DeviceId);
+                    if (state == null)
+                    {
+                        state = manager.AddLight(item.DisplayName, roomCode);
+                        if (state != null) item.DeviceId = state.id;
+                    }
+
                     if (state != null) result.Add(state);
                 }
             }

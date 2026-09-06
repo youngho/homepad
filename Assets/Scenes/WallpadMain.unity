@@ -9206,9 +9206,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Homepad.UI.LightingPanelUI
   allOffButton: {fileID: 466288933}
-  slotTemplate: {fileID: 0}
-  slotList: {fileID: 0}
-  titleText: {fileID: 0}
+  slotTemplate: {fileID: 631315661}
+  slotList: {fileID: 1288543564}
+  titleText: {fileID: 1638376136}
   lights:
   - lightId: 0
     button: {fileID: 631315663}

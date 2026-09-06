@@ -330,25 +330,65 @@ namespace Homepad.Home
             return cam != null ? cam.transform.forward : new Vector3(1f, -1f, 1f);
         }
 
+        public void EnsureBoundDevices()
+        {
+            for (int i = 0; i < layout.Items.Count; i++)
+            {
+                BindDevice(layout.Items[i]);
+            }
+        }
+
         private void BindDevice(PlacedItem item)
         {
             var manager = WallpadManager.Instance;
-            if (manager == null) return;
+            if (manager == null || item == null) return;
 
             switch (item.Kind)
             {
                 case HomeItemKind.Light:
-                    var light = manager.AddLight(item.DisplayName, HomeItemDef.RoomCode(item.RoomHint));
+                    var light = FindBoundLight(manager, item.DeviceId);
+                    if (light == null)
+                    {
+                        light = manager.AddLight(item.DisplayName, HomeItemDef.RoomCode(item.RoomHint));
+                    }
+
                     item.DeviceId = light != null ? light.id : 0;
                     break;
                 case HomeItemKind.Heating:
-                    var heat = manager.AddHeatingRoom(HomeItemDef.RoomName(item.RoomHint), HomeItemDef.RoomCode(item.RoomHint));
+                    var heat = FindBoundHeat(manager, item.DeviceId);
+                    if (heat == null)
+                    {
+                        heat = manager.AddHeatingRoom(HomeItemDef.RoomName(item.RoomHint), HomeItemDef.RoomCode(item.RoomHint));
+                    }
+
                     item.DeviceId = heat != null ? heat.roomId : 0;
                     break;
                 default:
                     item.DeviceId = 0;
                     break;
             }
+        }
+
+        private static LightState FindBoundLight(WallpadManager manager, int deviceId)
+        {
+            if (manager == null || deviceId <= 0) return null;
+            for (int i = 0; i < manager.Lights.Count; i++)
+            {
+                if (manager.Lights[i].id == deviceId) return manager.Lights[i];
+            }
+
+            return null;
+        }
+
+        private static HeatingState FindBoundHeat(WallpadManager manager, int deviceId)
+        {
+            if (manager == null || deviceId <= 0) return null;
+            for (int i = 0; i < manager.HeatingRooms.Count; i++)
+            {
+                if (manager.HeatingRooms[i].roomId == deviceId) return manager.HeatingRooms[i];
+            }
+
+            return null;
         }
 
         private string MakeDisplayName(HomeItemDef def, RoomRecord room)

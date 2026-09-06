@@ -77,6 +77,7 @@ namespace Homepad.Home
 
         private void Start()
         {
+            service?.EnsureBoundDevices();
             builder?.RefreshItemStates();
         }
 
