@@ -172,37 +172,44 @@ namespace Homepad.UI
 
         private void Update()
         {
-            var mouse = Mouse.current;
-            if (mouse == null) return;
-
-            Vector2 pos = mouse.position.ReadValue();
-            if (mouse.leftButton.wasPressedThisFrame)
+            if (PointerInput.TryPrimary(out Vector2 pos, out bool down, out bool held, out bool up))
             {
-                logDragActive = IsPointerOverLog(pos);
-                if (logDragActive)
+                if (down)
                 {
-                    logDragStart = pos;
-                    UpdateLogSelection(pos, pos, false);
+                    logDragActive = IsPointerOverLog(pos);
+                    if (logDragActive)
+                    {
+                        logDragStart = pos;
+                        UpdateLogSelection(pos, pos, false);
+                    }
+                    else
+                    {
+                        ClearLogSelection();
+                    }
                 }
-                else
+
+                if (logDragActive && held)
                 {
-                    ClearLogSelection();
+                    UpdateLogSelection(logDragStart, pos, false);
+                }
+
+                if (logDragActive && up)
+                {
+                    logDragActive = false;
+                    UpdateLogSelection(logDragStart, pos, true);
                 }
             }
-
-            if (logDragActive && mouse.leftButton.isPressed)
-            {
-                UpdateLogSelection(logDragStart, pos, false);
-            }
-
-            if (logDragActive && mouse.leftButton.wasReleasedThisFrame)
+            else if (logDragActive)
             {
                 logDragActive = false;
-                UpdateLogSelection(logDragStart, pos, true);
             }
 
             CopyLogIfShortcutPressed();
-            HandleLogMouseScroll(pos, mouse);
+            var mouse = Mouse.current;
+            if (mouse != null)
+            {
+                HandleLogMouseScroll(mouse.position.ReadValue(), mouse);
+            }
         }
 
         private void HookConnector()
