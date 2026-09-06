@@ -1,6 +1,5 @@
 using Homepad.Core;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Homepad.UI
@@ -143,7 +142,7 @@ namespace Homepad.UI
         {
             if (nativeEdgeDrag) return;
 
-            if (!TryPointer(out Vector2 pos, out bool down, out bool held, out bool up))
+            if (!PointerInput.TryPrimary(out Vector2 pos, out bool down, out bool held, out bool up))
             {
                 if (dragging || maybeDrag)
                 {
@@ -258,37 +257,6 @@ namespace Homepad.UI
         {
             if (closeRect == null) return false;
             return RectTransformUtility.RectangleContainsScreenPoint(closeRect, screen, null);
-        }
-
-        private static bool TryPointer(out Vector2 pos, out bool down, out bool held, out bool up)
-        {
-            var mouse = Mouse.current;
-            if (mouse != null && (mouse.leftButton.isPressed || mouse.leftButton.wasPressedThisFrame || mouse.leftButton.wasReleasedThisFrame))
-            {
-                pos = mouse.position.ReadValue();
-                down = mouse.leftButton.wasPressedThisFrame;
-                held = mouse.leftButton.isPressed;
-                up = mouse.leftButton.wasReleasedThisFrame;
-                return true;
-            }
-
-            var touch = Touchscreen.current;
-            if (touch != null)
-            {
-                var primary = touch.primaryTouch;
-                if (primary.press.isPressed || primary.press.wasReleasedThisFrame)
-                {
-                    pos = primary.position.ReadValue();
-                    down = primary.press.wasPressedThisFrame;
-                    held = primary.press.isPressed;
-                    up = primary.press.wasReleasedThisFrame;
-                    return true;
-                }
-            }
-
-            pos = default;
-            down = held = up = false;
-            return false;
         }
 
         private static void Bind(Button button, UnityEngine.Events.UnityAction action)

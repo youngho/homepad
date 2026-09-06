@@ -261,7 +261,14 @@ namespace Homepad.Home
             }
 
             var box = go.AddComponent<BoxCollider>();
-            box.size = new Vector3(0.8f, 0.8f, 0.8f);
+            if (item.Kind == HomeItemKind.Light)
+            {
+                box.size = new Vector3(1.6f, 1.2f, 1.6f);
+            }
+            else
+            {
+                box.size = new Vector3(0.8f, 0.8f, 0.8f);
+            }
             view.Bind(item, visual, curtainLeaf);
             views[item.InstanceId] = view;
         }

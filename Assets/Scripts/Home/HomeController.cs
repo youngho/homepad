@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using Homepad.Core;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 
 namespace Homepad.Home
@@ -104,30 +103,32 @@ namespace Homepad.Home
 
         private void Update()
         {
-            var mouse = Mouse.current;
-            if (mouse == null) return;
-
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
             {
                 CancelPlacement();
                 OverlayDismissed?.Invoke();
             }
 
-            if (mouse.rightButton.wasPressedThisFrame && !PointerOverUi())
+            var mouse = Mouse.current;
+            if (mouse != null && mouse.rightButton.wasPressedThisFrame && !PointerInput.OverUi(mouse.position.ReadValue()))
             {
                 CancelPlacement();
                 OverlayDismissed?.Invoke();
             }
 
-            Vector2 mousePos = mouse.position.ReadValue();
-            bool overUi = PointerOverUi();
+            if (!PointerInput.TryPrimary(out Vector2 pointerPos, out bool down, out bool held, out bool up))
+            {
+                return;
+            }
+
+            bool overUi = PointerInput.OverUi(pointerPos);
 
             if (pendingDef != null && !overUi)
             {
-                UpdateGhost(mousePos);
-                if (mouse.leftButton.wasPressedThisFrame)
+                UpdateGhost(pointerPos);
+                if (down)
                 {
-                    ConfirmPlacement(mousePos);
+                    ConfirmPlacement(pointerPos);
                 }
 
                 return;
@@ -135,7 +136,7 @@ namespace Homepad.Home
 
             if (overUi)
             {
-                if (mouse.leftButton.wasReleasedThisFrame)
+                if (up)
                 {
                     pointerHeldOnItem = false;
                     dragging = false;
@@ -145,16 +146,16 @@ namespace Homepad.Home
                 return;
             }
 
-            if (mouse.leftButton.wasPressedThisFrame)
+            if (down)
             {
-                pointerDownPos = mousePos;
-                dragView = RaycastItem(mousePos);
+                pointerDownPos = pointerPos;
+                dragView = RaycastItem(pointerPos);
                 pointerHeldOnItem = dragView != null;
                 dragging = false;
                 if (dragView == null)
                 {
                     OverlayDismissed?.Invoke();
-                    var hitRoom = RaycastRoom(mousePos);
+                    var hitRoom = RaycastRoom(pointerPos);
                     if (hitRoom != null)
                     {
                         SelectRoom(hitRoom);
@@ -162,9 +163,9 @@ namespace Homepad.Home
                 }
             }
 
-            if (pointerHeldOnItem && dragView != null && mouse.leftButton.isPressed)
+            if (pointerHeldOnItem && dragView != null && held)
             {
-                if (!dragging && (mousePos - pointerDownPos).sqrMagnitude > DragThreshold * DragThreshold)
+                if (!dragging && (pointerPos - pointerDownPos).sqrMagnitude > DragThreshold * DragThreshold)
                 {
                     dragging = true;
                     OverlayDismissed?.Invoke();
@@ -172,15 +173,15 @@ namespace Homepad.Home
 
                 if (dragging)
                 {
-                    DragItem(dragView, mousePos);
+                    DragItem(dragView, pointerPos);
                 }
             }
 
-            if (mouse.leftButton.wasReleasedThisFrame)
+            if (up)
             {
                 if (dragging && dragView != null)
                 {
-                    FinishDrag(dragView, mousePos);
+                    FinishDrag(dragView, pointerPos);
                 }
                 else if (pointerHeldOnItem && dragView != null)
                 {
@@ -452,8 +453,18 @@ namespace Homepad.Home
             var cam = Camera.main;
             if (cam == null) return null;
             var ray = cam.ScreenPointToRay(mousePos);
-            if (!Physics.Raycast(ray, out var hit, 200f)) return null;
-            return hit.collider.GetComponentInParent<HomeItemView>();
+            var hits = Physics.RaycastAll(ray, 200f);
+            HomeItemView best = null;
+            float bestDist = float.MaxValue;
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var view = hits[i].collider.GetComponentInParent<HomeItemView>();
+                if (view == null || hits[i].distance >= bestDist) continue;
+                best = view;
+                bestDist = hits[i].distance;
+            }
+
+            return best;
         }
 
         private static bool TryWorldPoint(Vector2 mousePos, out Vector3 world)
@@ -466,20 +477,6 @@ namespace Homepad.Home
             if (!plane.Raycast(ray, out float dist)) return false;
             world = ray.GetPoint(dist);
             return true;
-        }
-
-        private static readonly List<RaycastResult> UiHits = new List<RaycastResult>();
-
-        private static bool PointerOverUi()
-        {
-            if (EventSystem.current == null || Mouse.current == null) return false;
-            var data = new PointerEventData(EventSystem.current)
-            {
-                position = Mouse.current.position.ReadValue()
-            };
-            UiHits.Clear();
-            EventSystem.current.RaycastAll(data, UiHits);
-            return UiHits.Count > 0;
         }
 
         private void OnManagerState()
