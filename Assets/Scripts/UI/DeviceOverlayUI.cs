@@ -46,7 +46,7 @@ namespace Homepad.UI
             {
                 case HomeItemKind.Light:
                     ShowRoot(lightingRoot);
-                    lighting?.Focus(item.DeviceId);
+                    lighting?.FocusRoom(item);
                     break;
                 case HomeItemKind.Heating:
                     ShowRoot(heatingRoot);

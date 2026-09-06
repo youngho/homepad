@@ -109,15 +109,28 @@ namespace Homepad.Home
             dioramaRig.SetAllLights(false);
             if (layout == null) return;
 
+            var roomLit = new Dictionary<RoomHint, bool>();
             for (int i = 0; i < layout.Items.Count; i++)
             {
                 var item = layout.Items[i];
-                if (item.Kind == HomeItemKind.Light)
+                if (item.Kind != HomeItemKind.Light) continue;
+                var light = FindLight(manager, item.DeviceId);
+                bool on = light != null && light.isOn;
+                if (!roomLit.TryGetValue(item.RoomHint, out bool already) || !already)
                 {
-                    var light = FindLight(manager, item.DeviceId);
-                    dioramaRig.SetLight(item.RoomHint, light != null && light.isOn);
+                    roomLit[item.RoomHint] = on;
                 }
-                else if (item.Kind == HomeItemKind.Heating)
+            }
+
+            foreach (var pair in roomLit)
+            {
+                dioramaRig.SetLight(pair.Key, pair.Value);
+            }
+
+            for (int i = 0; i < layout.Items.Count; i++)
+            {
+                var item = layout.Items[i];
+                if (item.Kind == HomeItemKind.Heating)
                 {
                     var heat = FindHeat(manager, item.DeviceId);
                     dioramaRig.SetHeating(item.RoomHint, heat != null && heat.isPowered && !heat.isAwayMode);

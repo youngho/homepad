@@ -142,6 +142,22 @@ namespace Homepad.Core
             RaiseStateChanged();
         }
 
+        public void TurnOffRoomLights(ushort roomCode)
+        {
+            bool any = false;
+            foreach (var light in lights)
+            {
+                if (light.roomCode != roomCode || !light.isOn) continue;
+                light.isOn = false;
+                OnLightChanged?.Invoke(light);
+                any = true;
+            }
+
+            if (!any) return;
+            SendLightRoom(roomCode);
+            RaiseStateChanged();
+        }
+
         public void SetHeatingTargetTemp(int roomId, float temp)
         {
             var room = heatingRooms.Find(item => item.roomId == roomId);
