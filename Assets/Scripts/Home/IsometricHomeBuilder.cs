@@ -269,7 +269,7 @@ namespace Homepad.Home
             {
                 box.size = new Vector3(1.6f, 1.2f, 1.6f);
             }
-            else if (item.Kind == HomeItemKind.Vent)
+            else if (item.Kind == HomeItemKind.Vent || item.Kind == HomeItemKind.Heating)
             {
                 box.size = new Vector3(1.1f, 1.2f, 0.7f);
             }

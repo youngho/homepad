@@ -533,6 +533,7 @@ namespace Homepad.Home
                         {
                             ApplySave(data);
                             EnsureLivingVent();
+                            EnsureRoomHeaters();
                             return;
                         }
                     }
@@ -560,6 +561,7 @@ namespace Homepad.Home
             PlaceDemoLights(room2);
             PlaceDemoLights(room3);
             EnsureLivingVent();
+            EnsureRoomHeaters();
 
             SelectRoom(living);
             Save();
@@ -578,6 +580,32 @@ namespace Homepad.Home
             {
                 Save();
             }
+        }
+
+        private void EnsureRoomHeaters()
+        {
+            bool added = false;
+            for (int i = 0; i < layout.Rooms.Count; i++)
+            {
+                var room = layout.Rooms[i];
+                if (room == null || layout.HasHeatingInHint(room.Hint)) continue;
+
+                var def = HomeItemDef.Create(HomeItemKind.Heating, room.Hint, room.Name);
+                var cell = service.DefaultCell(def, room);
+                int wallDir = service.DefaultWallDir(def, room, cell);
+                if (room.Hint == RoomHint.Living)
+                {
+                    wallDir = (wallDir + 1) & 3;
+                    cell = layout.EdgeCell(room, wallDir);
+                }
+
+                if (service.PlaceIntoRoom(def, room, cell, wallDir) != null)
+                {
+                    added = true;
+                }
+            }
+
+            if (added) Save();
         }
 
         private void PlaceDemoLights(RoomRecord room)
