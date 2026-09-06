@@ -92,9 +92,15 @@ namespace Homepad.Core
             return packet;
         }
 
+        // HEX 테스트 프리셋과 같다: 30 BC | 장치 | 방 | 명령 | VALUE
+        public static byte[] BuildRequest(ushort device, ushort room, ushort command, byte[] value8)
+        {
+            return BuildFrame(room, command, value8, device, TypeTransmit);
+        }
+
         public static byte[] CreateStatusQueryPacket(ushort device, ushort room)
         {
-            return BuildFrame(room, CommandQuery, new byte[8], device, TypeTransmit);
+            return BuildRequest(device, room, CommandQuery, new byte[8]);
         }
 
         public static bool IsQuery(Frame frame)
@@ -143,7 +149,7 @@ namespace Homepad.Core
                     }
                 }
             }
-            return BuildFrame(DeviceLight, room, value);
+            return BuildRequest(DeviceLight, room, CommandControl, value);
         }
 
         public static byte[] CreateHeatingControlPacket(ushort room, bool power, bool awayMode, float targetTemp)
@@ -166,22 +172,22 @@ namespace Homepad.Core
                 value[1] = HeatPowerOn1;
             }
             value[2] = temp;
-            return BuildFrame(DeviceHeating, room, value);
+            return BuildRequest(DeviceHeating, room, CommandControl, value);
         }
 
         public static byte[] CreateGasClosePacket()
         {
-            return BuildFrame(DeviceGas, 0x0001, new byte[8]);
+            return BuildRequest(DeviceGas, 0x0001, CommandControl, new byte[8]);
         }
 
         public static byte[] CreateVentilationPacket(VentilationSpeed speed)
         {
-            return BuildFrame(DeviceVentilation, 0x0001, new byte[] { (byte)speed, 0, 0, 0, 0, 0, 0, 0 });
+            return BuildRequest(DeviceVentilation, 0x0001, CommandControl, new byte[] { (byte)speed, 0, 0, 0, 0, 0, 0, 0 });
         }
 
         public static byte[] CreateElevatorCallPacket()
         {
-            return BuildFrame(DeviceElevator, 0x0001, new byte[8]);
+            return BuildRequest(DeviceElevator, 0x0001, CommandControl, new byte[8]);
         }
 
         public static bool TryParse(byte[] raw, out Frame frame)
