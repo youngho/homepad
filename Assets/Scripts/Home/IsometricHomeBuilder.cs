@@ -16,6 +16,7 @@ namespace Homepad.Home
 
         [SerializeField] private GameObject ceilingLampPrefab;
         [SerializeField] private GameObject wallHeaterPrefab;
+        [SerializeField] private GameObject wallVentPrefab;
         [SerializeField] private Material opaqueLitTemplate;
         [SerializeField] private Material transparentLitTemplate;
         [SerializeField] private Material emissiveLitTemplate;
@@ -250,6 +251,9 @@ namespace Homepad.Home
                 case HomeItemKind.Heating:
                     visual = SpawnHeater(go.transform, item);
                     break;
+                case HomeItemKind.Vent:
+                    visual = SpawnVentPanel(go.transform, item);
+                    break;
                 case HomeItemKind.ElectricCurtain:
                     curtainLeaf = SpawnCurtain(go.transform, item);
                     visual = curtainLeaf;
@@ -264,6 +268,10 @@ namespace Homepad.Home
             if (item.Kind == HomeItemKind.Light)
             {
                 box.size = new Vector3(1.6f, 1.2f, 1.6f);
+            }
+            else if (item.Kind == HomeItemKind.Vent)
+            {
+                box.size = new Vector3(1.1f, 1.2f, 0.7f);
             }
             else
             {
@@ -347,6 +355,20 @@ namespace Homepad.Home
             return inst.transform;
         }
 
+        private Transform SpawnVentPanel(Transform parent, PlacedItem item)
+        {
+            parent.position = layout.WallCenter(item.Cell, item.WallDir, 1.18f);
+            parent.rotation = Quaternion.LookRotation(-HomeLayout.DirNormal(item.WallDir));
+
+            var inst = SpawnKit(wallVentPrefab, parent, "WallVentPanel");
+            dioramaRig?.RegisterFixture(new DioramaRoomRig.RoomFixture
+            {
+                hint = item.RoomHint,
+                wallAnchor = parent
+            });
+            return inst.transform;
+        }
+
         private Transform SpawnCurtain(Transform parent, PlacedItem item)
         {
             parent.position = layout.WallCenter(item.Cell, item.WallDir, 1.05f);
@@ -391,6 +413,8 @@ namespace Homepad.Home
                 ceilingLampPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/CeilingLamp.prefab");
             if (wallHeaterPrefab == null)
                 wallHeaterPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/WallHeater.prefab");
+            if (wallVentPrefab == null)
+                wallVentPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/WallVentPanel.prefab");
             if (opaqueLitTemplate == null)
                 opaqueLitTemplate = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Home/Kit/Materials/FloorOak.mat");
             if (transparentLitTemplate == null)

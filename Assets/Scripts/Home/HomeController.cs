@@ -532,6 +532,7 @@ namespace Homepad.Home
                         if (data != null && (data.rooms.Count > 0 || data.items.Count > 0))
                         {
                             ApplySave(data);
+                            EnsureLivingVent();
                             return;
                         }
                     }
@@ -558,9 +559,25 @@ namespace Homepad.Home
             PlaceDemoLights(room1);
             PlaceDemoLights(room2);
             PlaceDemoLights(room3);
+            EnsureLivingVent();
 
             SelectRoom(living);
             Save();
+        }
+
+        private void EnsureLivingVent()
+        {
+            if (layout.HasSingleton(HomeItemKind.Vent, RoomHint.Living)) return;
+            var living = layout.FindRoom(RoomHint.Living);
+            if (living == null) return;
+
+            var def = HomeItemDef.Create(HomeItemKind.Vent, living.Hint, living.Name);
+            var cell = service.DefaultCell(def, living);
+            int wallDir = service.DefaultWallDir(def, living, cell);
+            if (service.PlaceIntoRoom(def, living, cell, wallDir) != null)
+            {
+                Save();
+            }
         }
 
         private void PlaceDemoLights(RoomRecord room)

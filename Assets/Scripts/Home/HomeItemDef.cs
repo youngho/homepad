@@ -132,7 +132,7 @@ namespace Homepad.Home
             [HomeItemKind.Heating] = new DeviceCategoryRule(HomeItemKind.Heating, "난방", "🔥", Surface.Wall, true, "바닥 온돌 난방 조절기"),
             [HomeItemKind.ElectricCurtain] = new DeviceCategoryRule(HomeItemKind.ElectricCurtain, "전동커튼", "🪟", Surface.Window, false, "3D 스마트 창문 커튼"),
             [HomeItemKind.AirConditioner] = new DeviceCategoryRule(HomeItemKind.AirConditioner, "에어컨", "❄️", Surface.Ceiling, true, "천장형 시스템 에어컨"),
-            [HomeItemKind.Vent] = new DeviceCategoryRule(HomeItemKind.Vent, "환기", "🌀", Surface.Ceiling, true, "천장 공기 청정 환기"),
+            [HomeItemKind.Vent] = new DeviceCategoryRule(HomeItemKind.Vent, "환기", "🌀", Surface.Wall, true, "거실 환기 조절 패널"),
             [HomeItemKind.Gas] = new DeviceCategoryRule(HomeItemKind.Gas, "가스 밸브", "🛡️", Surface.Wall, true, "주방 안전 자동 차단 밸브"),
             [HomeItemKind.Elevator] = new DeviceCategoryRule(HomeItemKind.Elevator, "엘리베이터", "🛗", Surface.Floor, true, "현관 엘리베이터 호출기")
         };
@@ -150,7 +150,7 @@ namespace Homepad.Home
             new HomeItemDef("heat_bed1", HomeItemKind.Heating, Surface.Wall, RoomHint.Bedroom, "침실 난방", true),
             new HomeItemDef("heat_bed2", HomeItemKind.Heating, Surface.Wall, RoomHint.Bedroom2, "침실 2 난방", true),
             new HomeItemDef("gas", HomeItemKind.Gas, Surface.Wall, RoomHint.Kitchen, "가스 밸브", true),
-            new HomeItemDef("vent", HomeItemKind.Vent, Surface.Ceiling, RoomHint.Living, "환기", true),
+            new HomeItemDef("vent", HomeItemKind.Vent, Surface.Wall, RoomHint.Living, "환기", true),
             new HomeItemDef("elevator", HomeItemKind.Elevator, Surface.Floor, RoomHint.Entrance, "엘리베이터", true),
             new HomeItemDef("curtain", HomeItemKind.ElectricCurtain, Surface.Window, RoomHint.Living, "전동커튼", false)
         };

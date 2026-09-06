@@ -99,10 +99,10 @@ namespace Homepad.Home
                 switch (kind)
                 {
                     case HomeItemKind.Light:
-                    case HomeItemKind.Vent:
                         return f.ceilingAnchor ?? transform;
                     case HomeItemKind.Heating:
                     case HomeItemKind.Gas:
+                    case HomeItemKind.Vent:
                     case HomeItemKind.Elevator:
                         return f.wallAnchor ?? f.floorAnchor ?? transform;
                     case HomeItemKind.ElectricCurtain:
