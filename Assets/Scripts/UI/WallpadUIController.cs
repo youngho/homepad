@@ -22,6 +22,7 @@ namespace Homepad.UI
         [SerializeField] private Image wifiDot;
         [SerializeField] private Text wifiText;
         [SerializeField] private Text hintText;
+        [SerializeField] private Button settingsButton;
         [SerializeField] private Button settingsCloseButton;
         [SerializeField] private GameObject settingsPanel;
         [SerializeField] private DeviceOverlayUI overlay;
@@ -35,10 +36,8 @@ namespace Homepad.UI
 
         private void Start()
         {
-            Bind(settingsCloseButton, () =>
-            {
-                if (settingsPanel != null) settingsPanel.SetActive(false);
-            });
+            Bind(settingsButton, OpenSettings);
+            Bind(settingsCloseButton, CloseSettings);
 
             if (houseTitle != null && WallpadManager.Instance != null)
             {
@@ -87,8 +86,20 @@ namespace Homepad.UI
         private void OnOverlayDismissed()
         {
             overlay?.Hide();
-            if (settingsPanel != null) settingsPanel.SetActive(false);
+            CloseSettings();
             catalogDrawer?.Close();
+        }
+
+        private void OpenSettings()
+        {
+            catalogDrawer?.Close();
+            overlay?.Hide();
+            if (settingsPanel != null) settingsPanel.SetActive(true);
+        }
+
+        private void CloseSettings()
+        {
+            if (settingsPanel != null) settingsPanel.SetActive(false);
         }
 
         private void RefreshHint()
