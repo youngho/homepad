@@ -42,6 +42,7 @@ namespace Homepad.UI
         [SerializeField] private Text logText;
         [SerializeField] private ScrollRect logScrollRect;
         [SerializeField] private Button clearLogButton;
+        [SerializeField] private Text memoryText;
 
         private readonly StringBuilder logBuilder = new StringBuilder();
         private int logLineCount;
@@ -84,6 +85,11 @@ namespace Homepad.UI
 
         private void OnDestroy()
         {
+            if (WallpadManager.Instance != null)
+            {
+                WallpadManager.Instance.OnStateChanged -= RefreshMemoryDump;
+            }
+
             if (connector == null) return;
             connector.OnConnectionStatusChanged -= UpdateStatus;
             connector.OnLogMessage -= AppendLog;
@@ -128,6 +134,7 @@ namespace Homepad.UI
             }
 
             if (showLogToggle == null) showLogToggle = FindUi<Toggle>("ShowLog");
+            if (memoryText == null) memoryText = FindUi<Text>("DeviceMemory");
             if (logText == null) logText = FindIn<Text>(logPanel != null ? logPanel.transform : null, "LogText");
             if (logScrollRect == null) logScrollRect = FindIn<ScrollRect>(logPanel != null ? logPanel.transform : null, "LogScroll");
             if (clearLogButton == null) clearLogButton = FindIn<Button>(logPanel != null ? logPanel.transform : null, "ClearLog");
@@ -177,6 +184,22 @@ namespace Homepad.UI
             AutoResolveUiReferences();
             BindEvents();
             HookConnector();
+            HookMemoryDump();
+            RefreshMemoryDump();
+        }
+
+        private void HookMemoryDump()
+        {
+            if (WallpadManager.Instance == null) return;
+            WallpadManager.Instance.OnStateChanged -= RefreshMemoryDump;
+            WallpadManager.Instance.OnStateChanged += RefreshMemoryDump;
+        }
+
+        private void RefreshMemoryDump()
+        {
+            if (memoryText == null) return;
+            var manager = WallpadManager.Instance;
+            memoryText.text = manager != null ? manager.FormatMemoryDump() : "월패드 메모리가 없습니다.";
         }
 
         private void BindEvents()

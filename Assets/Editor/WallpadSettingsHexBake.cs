@@ -144,6 +144,44 @@ namespace Homepad.Editor
                 if (toggle != null) toggle.isOn = false;
             }
 
+            var memory = settings.Find("DeviceMemory");
+            if (memory == null)
+            {
+                var title = settings.Find("Title");
+                if (title != null)
+                {
+                    var copy = Object.Instantiate(title.gameObject, settings, false);
+                    copy.name = "DeviceMemory";
+                    memory = copy.transform;
+                }
+            }
+
+            if (memory != null)
+            {
+                var memoryRt = (RectTransform)memory;
+                memoryRt.anchorMin = Vector2.zero;
+                memoryRt.anchorMax = Vector2.one;
+                memoryRt.pivot = new Vector2(0.5f, 1f);
+                memoryRt.offsetMin = new Vector2(24f, 20f);
+                memoryRt.offsetMax = new Vector2(-24f, -308f);
+                memoryRt.localScale = Vector3.one;
+                var txt = memory.GetComponent<Text>() ?? memory.GetComponentInChildren<Text>(true);
+                if (txt != null)
+                {
+                    txt.font = Regular != null ? Regular : txt.font;
+                    txt.fontSize = 18;
+                    txt.fontStyle = FontStyle.Normal;
+                    txt.resizeTextForBestFit = false;
+                    txt.alignment = TextAnchor.UpperLeft;
+                    txt.horizontalOverflow = HorizontalWrapMode.Wrap;
+                    txt.verticalOverflow = VerticalWrapMode.Overflow;
+                    txt.supportRichText = false;
+                    txt.raycastTarget = false;
+                    txt.color = new Color(0.86f, 0.88f, 0.90f, 1f);
+                    txt.text = "장치 상태";
+                }
+            }
+
             if (hexLog == null)
             {
                 var go = new GameObject("HexLog", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
@@ -237,6 +275,11 @@ namespace Homepad.Editor
             if (net == null) net = root.gameObject.AddComponent<NetworkSettingsUI>();
             SetField(net, "settingsRoot", settings);
             SetField(net, "logPanel", hexLog != null ? hexLog.gameObject : null);
+            var memory = settings.Find("DeviceMemory");
+            var memoryTxt = memory != null
+                ? memory.GetComponent<Text>() ?? memory.GetComponentInChildren<Text>(true)
+                : null;
+            SetField(net, "memoryText", memoryTxt);
 
             var controller = root.GetComponent<WallpadUIController>();
             if (controller == null) return;

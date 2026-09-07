@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text;
 using UnityEngine;
 
 namespace Homepad.Core
@@ -473,7 +474,6 @@ namespace Homepad.Core
             Array.Copy(frame.value, bitmap, copy);
             lightBitmapByRoom[room] = bitmap;
 
-            bool changed = false;
             foreach (var light in lights)
             {
                 if (light.roomCode != room) continue;
@@ -482,10 +482,9 @@ namespace Homepad.Core
                 if (light.isOn == isOn) continue;
                 light.isOn = isOn;
                 OnLightChanged?.Invoke(light);
-                changed = true;
             }
 
-            if (changed) RaiseStateChanged();
+            RaiseStateChanged();
         }
 
         private void ApplyCachedLight(LightState light)
@@ -596,6 +595,116 @@ namespace Homepad.Core
         private void SendHeating(HeatingState room)
         {
             connector?.SendPacket(KocomProtocol.CreateHeatingControlPacket(room.roomCode, room.isPowered, room.isAwayMode, room.targetTemp));
+        }
+
+        public string FormatMemoryDump()
+        {
+            var sb = new StringBuilder(512);
+            sb.Append("외출  ").AppendLine(isAwayMode ? "외출" : "재실");
+
+            sb.AppendLine("조명");
+            if (lights.Count == 0 && lightBitmapByRoom.Count == 0)
+            {
+                sb.AppendLine("  없음");
+            }
+            else
+            {
+                for (int i = 0; i < lights.Count; i++)
+                {
+                    var light = lights[i];
+                    sb.Append("  ")
+                        .Append(string.IsNullOrEmpty(light.name) ? DescribeRoom(light.roomCode) : light.name)
+                        .Append("  ")
+                        .AppendLine(light.isOn ? "ON" : "OFF");
+                }
+
+                if (lightBitmapByRoom.Count > 0)
+                {
+                    sb.AppendLine("조명 비트맵");
+                    var rooms = new List<ushort>(lightBitmapByRoom.Keys);
+                    rooms.Sort();
+                    for (int r = 0; r < rooms.Count; r++)
+                    {
+                        ushort roomCode = rooms[r];
+                        sb.Append("  ").Append(DescribeRoom(roomCode)).Append("  ");
+                        var bitmap = lightBitmapByRoom[roomCode];
+                        for (int i = 0; i < bitmap.Length; i++)
+                        {
+                            if (i > 0) sb.Append(' ');
+                            sb.Append(bitmap[i].ToString("X2"));
+                        }
+
+                        sb.AppendLine();
+                    }
+                }
+            }
+
+            sb.AppendLine("난방");
+            if (heatingRooms.Count == 0)
+            {
+                sb.AppendLine("  없음");
+            }
+            else
+            {
+                for (int i = 0; i < heatingRooms.Count; i++)
+                {
+                    var room = heatingRooms[i];
+                    string mode = room.isAwayMode ? "외출" : (room.isPowered ? "가동" : "정지");
+                    sb.Append("  ")
+                        .Append(string.IsNullOrEmpty(room.roomName) ? DescribeRoom(room.roomCode) : room.roomName)
+                        .Append("  ")
+                        .Append(mode)
+                        .Append("  설정 ")
+                        .Append(Mathf.RoundToInt(room.targetTemp))
+                        .Append("°  현재 ")
+                        .Append(Mathf.RoundToInt(room.currentTemp))
+                        .AppendLine("°");
+                }
+            }
+
+            sb.Append("가스  ").AppendLine(gas.isOpen ? "열림" : "잠금");
+            sb.Append("환기  ").AppendLine(DescribeVentilation(ventilation));
+            sb.Append("엘리베이터  ")
+                .Append(elevator.currentFloor)
+                .Append("층 ")
+                .Append(DescribeElevator(elevator.direction));
+            if (elevator.isCalled) sb.Append("  호출");
+            sb.AppendLine();
+            return sb.ToString();
+        }
+
+        private static string DescribeRoom(ushort roomCode)
+        {
+            return roomCode switch
+            {
+                0x0001 => "거실",
+                0x0101 => "방1",
+                0x0201 => "방2",
+                0x0301 => "방3",
+                _ => $"방(0x{roomCode:X4})"
+            };
+        }
+
+        private static string DescribeVentilation(VentilationState state)
+        {
+            if (state == null || !state.isPowered || state.speed == VentilationSpeed.Off) return "정지";
+            return state.speed switch
+            {
+                VentilationSpeed.Low => "약",
+                VentilationSpeed.Medium => "중",
+                VentilationSpeed.High => "강",
+                _ => "정지"
+            };
+        }
+
+        private static string DescribeElevator(ElevatorDirection direction)
+        {
+            return direction switch
+            {
+                ElevatorDirection.Up => "상행",
+                ElevatorDirection.Down => "하행",
+                _ => "정지"
+            };
         }
 
         private void RaiseStateChanged()
