@@ -152,7 +152,7 @@ namespace Homepad.Core
                 string line = rawLine.Trim();
                 if (string.IsNullOrEmpty(line)) continue;
 
-                // Detect Category Headers (e.g. "## 1. 조명", "## 난방", "## 환기", "## 현관문")
+                // Detect Category Headers (e.g. "## 1. 조명", "## 난방", "## 환기", "## 현관문", "## 엘리베이터")
                 if (line.StartsWith("##"))
                 {
                     if (line.Contains("조명") || line.IndexOf("Light", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -163,6 +163,8 @@ namespace Homepad.Core
                         currentCategory = HexCategory.Ventilation;
                     else if (line.Contains("현관") || line.Contains("도어") || line.IndexOf("Door", StringComparison.OrdinalIgnoreCase) >= 0)
                         currentCategory = HexCategory.DoorLock;
+                    else if (line.Contains("엘리베이터") || line.IndexOf("Elevator", StringComparison.OrdinalIgnoreCase) >= 0)
+                        currentCategory = HexCategory.Custom;
                     continue;
                 }
 
