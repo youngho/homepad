@@ -22,6 +22,11 @@ namespace Homepad.Core
         public const ushort TypeReport = 0x30DC;
         public const ushort TypeRetransmit1 = 0x30BD;
         public const ushort TypeRetransmit2 = 0x30BE;
+
+        // 이 집 부팅 캡처: BC→BD 200~300ms(답 없을 때), BD→BE ~30ms.
+        // HA 쪽 50ms/150ms/1s는 UART 갭·명령 간격·ACK 타임아웃이라 재전송 간격이 아니다.
+        public const int RetransmitWaitBdMs = 250;
+        public const int RetransmitGapBeMs = 30;
         public const ushort AddressWallpad = 0x0001;
         public const ushort DeviceLight = 0x000E;
         public const ushort DeviceHeating = 0x0036;
@@ -119,6 +124,22 @@ namespace Homepad.Core
         public static bool IsRequestType(ushort type)
         {
             return type == TypeTransmit || type == TypeRetransmit1 || type == TypeRetransmit2;
+        }
+
+        public static bool IsTransmitPacket(byte[] packet)
+        {
+            return packet != null && packet.Length >= PacketSize && ReadUInt16(packet, 2) == TypeTransmit;
+        }
+
+        public static byte[] CloneWithType(byte[] packet, ushort type)
+        {
+            if (packet == null || packet.Length < PacketSize) return packet;
+
+            byte[] copy = new byte[packet.Length];
+            Array.Copy(packet, copy, packet.Length);
+            WriteUInt16(copy, 2, type);
+            copy[18] = ComputeChecksum(copy);
+            return copy;
         }
 
         // 바이트 8–9. 필드명은 room이지만 버스에선 명령(00 00 제어, 00 3A 조회).

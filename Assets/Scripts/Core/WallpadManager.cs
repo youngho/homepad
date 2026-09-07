@@ -47,10 +47,15 @@ namespace Homepad.Core
         private Coroutine elevatorRoutine;
         private Coroutine doorLockRoutine;
         private Coroutine pollRoutine;
+        private Coroutine requestBurstRoutine;
+        private readonly Queue<byte[]> requestQueue = new Queue<byte[]>();
         private readonly Dictionary<ushort, byte[]> lightBitmapByRoom = new Dictionary<ushort, byte[]>();
         private readonly Dictionary<ushort, HeatingState> heatingByRoom = new Dictionary<ushort, HeatingState>();
         private ushort pendingQueryRoom;
         private ushort pendingQueryDevice;
+        private ushort pendingAckDevice;
+        private ushort pendingAckRoom;
+        private bool pendingAckSatisfied;
 
         private static readonly ushort[] DefaultRooms =
         {
@@ -233,7 +238,7 @@ namespace Homepad.Core
 
             pendingQueryDevice = device;
             pendingQueryRoom = room;
-            connector.SendPacket(KocomProtocol.CreateStatusQueryPacket(device, room));
+            SendRequest(KocomProtocol.CreateStatusQueryPacket(device, room));
         }
 
         public void QueryHeating(int roomId)
@@ -246,7 +251,7 @@ namespace Homepad.Core
         public void CloseGasValve()
         {
             gas.isOpen = false;
-            connector?.SendPacket(KocomProtocol.CreateGasClosePacket());
+            SendRequest(KocomProtocol.CreateGasClosePacket());
             OnGasChanged?.Invoke(gas);
             RaiseStateChanged();
         }
@@ -256,7 +261,7 @@ namespace Homepad.Core
             bool fromOff = !ventilation.isPowered || ventilation.speed == VentilationSpeed.Off;
             ventilation.speed = speed;
             ventilation.isPowered = speed != VentilationSpeed.Off;
-            connector?.SendPacket(KocomProtocol.CreateVentilationPacket(speed, fromOff));
+            SendRequest(KocomProtocol.CreateVentilationPacket(speed, fromOff));
             OnVentilationChanged?.Invoke(ventilation);
             RaiseStateChanged();
         }
@@ -265,7 +270,7 @@ namespace Homepad.Core
         {
             if (floor < 1) floor = HouseholdFloor;
             elevator.isCalled = true;
-            connector?.SendPacket(KocomProtocol.CreateElevatorCallPacket());
+            SendRequest(KocomProtocol.CreateElevatorCallPacket());
             OnElevatorChanged?.Invoke(elevator);
             RaiseStateChanged();
 
@@ -289,7 +294,7 @@ namespace Homepad.Core
             if (doorLock.isOpen || doorLock.isUnlocking) return;
 
             doorLock.isUnlocking = true;
-            connector?.SendPacket(KocomProtocol.CreateDoorUnlockPacket());
+            SendRequest(KocomProtocol.CreateDoorUnlockPacket());
             OnDoorLockChanged?.Invoke(doorLock);
             RaiseStateChanged();
 
@@ -453,7 +458,7 @@ namespace Homepad.Core
 
             pendingQueryDevice = device;
             pendingQueryRoom = room;
-            connector.SendPacket(KocomProtocol.CreateStatusQueryPacket(device, room));
+            SendRequest(KocomProtocol.CreateStatusQueryPacket(device, room));
 
             float elapsed = 0f;
             const float timeout = 1.0f;
@@ -469,7 +474,89 @@ namespace Homepad.Core
         private void HandlePacketReceived(byte[] raw)
         {
             if (!KocomProtocol.TryParse(raw, out var frame)) return;
+            if (frame.type == KocomProtocol.TypeReport)
+            {
+                NoteRequestAcked(frame.DeviceAddress, KocomProtocol.ResolveRoom(frame));
+            }
+
             ApplyFrame(frame);
+        }
+
+        private void SendRequest(byte[] packet)
+        {
+            if (packet == null || packet.Length == 0) return;
+            if (connector == null) return;
+
+            if (!KocomProtocol.IsTransmitPacket(packet))
+            {
+                connector.SendPacket(packet);
+                return;
+            }
+
+            requestQueue.Enqueue(packet);
+            if (requestBurstRoutine == null)
+            {
+                requestBurstRoutine = StartCoroutine(ProcessRequestQueue());
+            }
+        }
+
+        private IEnumerator ProcessRequestQueue()
+        {
+            while (requestQueue.Count > 0)
+            {
+                yield return SendBcBdBe(requestQueue.Dequeue());
+                if (requestQueue.Count > 0)
+                {
+                    yield return new WaitForSecondsRealtime(0.05f);
+                }
+            }
+
+            requestBurstRoutine = null;
+        }
+
+        private IEnumerator SendBcBdBe(byte[] bc)
+        {
+            if (connector == null || !KocomProtocol.TryParse(bc, out var frame))
+            {
+                connector?.SendPacket(bc);
+                yield break;
+            }
+
+            // 엘리베이터는 응답을 기다리지 못하고 BC/BD/BE를 연속으로 뿌린다.
+            bool waitForReport = frame.DeviceAddress != KocomProtocol.DeviceElevator;
+            pendingAckDevice = frame.DeviceAddress;
+            pendingAckRoom = KocomProtocol.ResolveRoom(frame);
+            pendingAckSatisfied = false;
+
+            connector.SendPacket(bc);
+
+            float waitBd = waitForReport
+                ? KocomProtocol.RetransmitWaitBdMs / 1000f
+                : KocomProtocol.RetransmitGapBeMs / 1000f;
+            float waited = 0f;
+            while (waited < waitBd)
+            {
+                if (waitForReport && pendingAckSatisfied) yield break;
+                waited += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            if (waitForReport && pendingAckSatisfied) yield break;
+
+            connector.SendPacket(KocomProtocol.CloneWithType(bc, KocomProtocol.TypeRetransmit1));
+            yield return new WaitForSecondsRealtime(KocomProtocol.RetransmitGapBeMs / 1000f);
+
+            if (waitForReport && pendingAckSatisfied) yield break;
+
+            connector.SendPacket(KocomProtocol.CloneWithType(bc, KocomProtocol.TypeRetransmit2));
+        }
+
+        private void NoteRequestAcked(ushort device, ushort room)
+        {
+            if (pendingAckDevice == device && pendingAckRoom == room)
+            {
+                pendingAckSatisfied = true;
+            }
         }
 
         private void ApplyFrame(KocomProtocol.Frame frame)
@@ -653,12 +740,12 @@ namespace Homepad.Core
         private void SendLightRoom(ushort room)
         {
             var roomLights = lights.FindAll(item => item.roomCode == room);
-            connector?.SendPacket(KocomProtocol.CreateLightRoomPacket(room, roomLights));
+            SendRequest(KocomProtocol.CreateLightRoomPacket(room, roomLights));
         }
 
         private void SendHeating(HeatingState room)
         {
-            connector?.SendPacket(KocomProtocol.CreateHeatingControlPacket(room.roomCode, room.isPowered, room.isAwayMode, room.targetTemp));
+            SendRequest(KocomProtocol.CreateHeatingControlPacket(room.roomCode, room.isPowered, room.isAwayMode, room.targetTemp));
         }
 
         public string FormatMemoryDump()

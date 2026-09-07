@@ -80,6 +80,8 @@ namespace Homepad.Core
         private readonly List<byte> receiveBuffer = new List<byte>(64);
         private readonly List<byte[]> extractedFrames = new List<byte[]>();
         private readonly object sendLock = new object();
+        private readonly Queue<byte[]> txQueue = new Queue<byte[]>();
+        private bool txPumpRunning;
 
         private void Awake()
         {
@@ -254,62 +256,95 @@ namespace Homepad.Core
         {
             if (packet == null || packet.Length == 0) return;
 
-            string hexStr = KocomProtocol.ToHexString(packet);
-
             if (UseSimulationMode)
             {
-                OnLogMessage?.Invoke($"[TX 시뮬레이션] {hexStr}", true);
+                OnLogMessage?.Invoke($"[TX 시뮬레이션] {KocomProtocol.ToHexString(packet)}", true);
                 return;
             }
 
-            Task.Run(() =>
+            byte[] copy = (byte[])packet.Clone();
+            bool startPump;
+            lock (sendLock)
             {
-                try
+                txQueue.Enqueue(copy);
+                startPump = !txPumpRunning;
+                if (startPump) txPumpRunning = true;
+            }
+
+            if (startPump)
+            {
+                Task.Run(PumpTx);
+            }
+        }
+
+        private void PumpTx()
+        {
+            while (true)
+            {
+                byte[] packet;
+                lock (sendLock)
                 {
-                    lock (sendLock)
+                    if (txQueue.Count == 0)
                     {
-                        if (linkMode == ArduinoLinkMode.Serial)
-                        {
-                            if (serialPort == null || !serialPort.IsOpen)
-                            {
-                                throw new IOException("시리얼 포트가 연결되어 있지 않습니다.");
-                            }
-
-                            serialPort.Write(packet, 0, packet.Length);
-                        }
-                        else if (linkMode == ArduinoLinkMode.Mqtt)
-                        {
-                            if (mqttClient == null || !mqttClient.IsConnected)
-                            {
-                                throw new IOException("MQTT가 연결되어 있지 않습니다.");
-                            }
-
-                            mqttClient.Publish(mqttTxTopic, packet);
-                        }
-                        else
-                        {
-                            if (networkStream == null || !networkStream.CanWrite)
-                            {
-                                throw new IOException("네트워크 스트림이 연결되어 있지 않습니다.");
-                            }
-
-                            networkStream.Write(packet, 0, packet.Length);
-                        }
+                        txPumpRunning = false;
+                        return;
                     }
 
-                    UnityMainThreadDispatcher.Enqueue(() =>
-                    {
-                        OnLogMessage?.Invoke($"[TX] {hexStr}", true);
-                    });
+                    packet = txQueue.Dequeue();
                 }
-                catch (Exception ex)
+
+                WriteQueuedPacket(packet);
+            }
+        }
+
+        private void WriteQueuedPacket(byte[] packet)
+        {
+            string hexStr = KocomProtocol.ToHexString(packet);
+            try
+            {
+                lock (sendLock)
                 {
-                    UnityMainThreadDispatcher.Enqueue(() =>
+                    if (linkMode == ArduinoLinkMode.Serial)
                     {
-                        OnLogMessage?.Invoke($"[TX 실패] {ex.Message}", true);
-                    });
+                        if (serialPort == null || !serialPort.IsOpen)
+                        {
+                            throw new IOException("시리얼 포트가 연결되어 있지 않습니다.");
+                        }
+
+                        serialPort.Write(packet, 0, packet.Length);
+                    }
+                    else if (linkMode == ArduinoLinkMode.Mqtt)
+                    {
+                        if (mqttClient == null || !mqttClient.IsConnected)
+                        {
+                            throw new IOException("MQTT가 연결되어 있지 않습니다.");
+                        }
+
+                        mqttClient.Publish(mqttTxTopic, packet);
+                    }
+                    else
+                    {
+                        if (networkStream == null || !networkStream.CanWrite)
+                        {
+                            throw new IOException("네트워크 스트림이 연결되어 있지 않습니다.");
+                        }
+
+                        networkStream.Write(packet, 0, packet.Length);
+                    }
                 }
-            });
+
+                UnityMainThreadDispatcher.Enqueue(() =>
+                {
+                    OnLogMessage?.Invoke($"[TX] {hexStr}", true);
+                });
+            }
+            catch (Exception ex)
+            {
+                UnityMainThreadDispatcher.Enqueue(() =>
+                {
+                    OnLogMessage?.Invoke($"[TX 실패] {ex.Message}", true);
+                });
+            }
         }
 
         private void ConnectSerial(CancellationToken token)
