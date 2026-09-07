@@ -34,8 +34,8 @@ namespace Homepad.Core
         public const byte LightOff = 0x00;
         public const byte HeatPowerOn0 = 0x11;
         public const byte HeatPowerOn1 = 0x00;
-        public const byte HeatPowerOff0 = 0x00;
-        public const byte HeatPowerOff1 = 0x01;
+        public const byte HeatPowerOff0 = 0x01;
+        public const byte HeatPowerOff1 = 0x00;
         public const byte HeatAway0 = 0x11;
         public const byte HeatAway1 = 0x01;
         public const ushort CommandControl = 0x0000;
