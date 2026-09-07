@@ -7801,6 +7801,7 @@ MonoBehaviour:
   ceilingLampPrefab: {fileID: 5348421040690460612, guid: a336693dd94fd466a99c53d35e93468a, type: 3}
   wallHeaterPrefab: {fileID: 85345935868173813, guid: d86c7d0f0f58d4c3eb8f3bdd6930ed13, type: 3}
   wallVentPrefab: {fileID: 85345935868173813, guid: c8e4a91b2f6d47a3b5c0d1e2f3041526, type: 3}
+  wallGasValvePrefab: {fileID: 820855907689552921, guid: 818648b3dbd6b4b328e29339156c4999, type: 3}
   opaqueLitTemplate: {fileID: 2100000, guid: 698b583bcb1394af1a12f42daaaf7a71, type: 2}
   transparentLitTemplate: {fileID: 2100000, guid: 3f0e033f257b74bd9ad401ef5dc70ad2, type: 2}
   emissiveLitTemplate: {fileID: 2100000, guid: 1772fdc92c13e4a3290b36b3b9975981, type: 2}
@@ -8757,7 +8758,7 @@ RectTransform:
   - {fileID: 1550266501}
   m_Father: {fileID: 400001}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.04, y: 0.30}
+  m_AnchorMin: {x: 0.04, y: 0.3}
   m_AnchorMax: {x: 0.96, y: 0.94}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}

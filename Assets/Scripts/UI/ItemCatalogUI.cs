@@ -424,6 +424,11 @@ namespace Homepad.UI
             for (int i = 0; i < RoomDeviceKinds.Length; i++)
             {
                 var kind = RoomDeviceKinds[i];
+                if (room.Hint == RoomHint.Kitchen &&
+                    (kind == HomeItemKind.Light || kind == HomeItemKind.Heating))
+                {
+                    continue;
+                }
                 var def = HomeItemDef.Create(kind, room.Hint, room.Name);
                 if (layout != null && layout.IsCatalogBlocked(def)) continue;
                 list.Add(kind);

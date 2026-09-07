@@ -9,7 +9,7 @@ namespace Homepad.Home
     [DefaultExecutionOrder(-50)]
     public class HomeController : MonoBehaviour
     {
-        public const string SaveKey = "Homepad.MyHome.v3";
+        public const string SaveKey = "Homepad.MyHome.v4";
 
         public static HomeController Instance { get; private set; }
 
@@ -503,20 +503,102 @@ namespace Homepad.Home
         {
             var cam = Camera.main;
             if (cam == null) return;
-            Vector3 center = new Vector3(0f, 0.5f, 0f);
-            float size = 7.5f;
 
-            if (layout != null && layout.TryGetBounds(out var bounds))
-            {
-                center = new Vector3(bounds.center.x, 0.5f, bounds.center.z);
-                float maxDim = Mathf.Max(bounds.size.x, bounds.size.z);
-                size = Mathf.Clamp(maxDim * 0.52f + 1.4f, 5.0f, 14.0f);
-            }
+            var rot = Quaternion.Euler(35.264f, 45f, 0f);
+            TryCameraFrame(rot, out Vector3 pivot, out float size);
 
             cam.orthographic = true;
             cam.orthographicSize = size;
-            cam.transform.rotation = Quaternion.Euler(35.264f, 45f, 0f);
-            cam.transform.position = center + cam.transform.rotation * new Vector3(0f, 0f, -24f);
+            cam.transform.rotation = rot;
+            cam.transform.position = pivot + rot * new Vector3(0f, 0f, -24f);
+        }
+
+        private bool TryCameraFrame(Quaternion rot, out Vector3 pivot, out float size)
+        {
+            pivot = new Vector3(0f, 0.5f, 0f);
+            size = 7.5f;
+            if (layout == null) return false;
+
+            var points = new List<Vector3>(16);
+            CollectFramePoints(points);
+            if (points.Count == 0) return false;
+
+            Vector3 sum = Vector3.zero;
+            for (int i = 0; i < points.Count; i++) sum += points[i];
+            pivot = sum / points.Count;
+            pivot.y = 0.5f;
+
+            Quaternion inv = Quaternion.Inverse(rot);
+            float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+            float minY = float.PositiveInfinity, maxY = float.NegativeInfinity;
+            for (int i = 0; i < points.Count; i++)
+            {
+                Vector3 local = inv * (points[i] - pivot);
+                minX = Mathf.Min(minX, local.x);
+                maxX = Mathf.Max(maxX, local.x);
+                minY = Mathf.Min(minY, local.y);
+                maxY = Mathf.Max(maxY, local.y);
+            }
+
+            Vector3 mid = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, 0f);
+            pivot += rot * mid;
+
+            float halfW = (maxX - minX) * 0.5f;
+            float halfH = (maxY - minY) * 0.5f;
+            float aspect = Screen.height > 0
+                ? (float)Screen.width / Screen.height
+                : Mathf.Max(0.15f, Camera.main != null ? Camera.main.aspect : 1.777f);
+            float fit = Mathf.Max(halfH, halfW / Mathf.Max(0.15f, aspect));
+
+            // 장치는 화면 안에 두고, 바닥 모서리는 잘려도 방을 크게 본다.
+            size = Mathf.Clamp(fit * 1.2f, 5.2f, 11.0f);
+            return true;
+        }
+
+        private void CollectFramePoints(List<Vector3> points)
+        {
+            if (layout.Items != null)
+            {
+                for (int i = 0; i < layout.Items.Count; i++)
+                {
+                    var item = layout.Items[i];
+                    if (item == null) continue;
+                    points.Add(ItemFramePoint(item));
+                }
+            }
+
+            if (points.Count > 0) return;
+            if (layout.Rooms == null) return;
+            for (int i = 0; i < layout.Rooms.Count; i++)
+            {
+                var room = layout.Rooms[i];
+                if (room == null) continue;
+                points.Add(layout.RoomCenter(room, 0.9f));
+            }
+        }
+
+        private Vector3 ItemFramePoint(PlacedItem item)
+        {
+            switch (item.Kind)
+            {
+                case HomeItemKind.Light:
+                {
+                    var room = layout.FindRoom(item.RoomHint);
+                    return room != null
+                        ? layout.RoomCenter(room, HomeDioramaBuilder.HighWallHeight - 0.18f)
+                        : layout.CellCenter(item.Cell, HomeDioramaBuilder.HighWallHeight - 0.18f);
+                }
+                case HomeItemKind.Heating:
+                    return layout.WallCenter(item.Cell, item.WallDir, 0.52f);
+                case HomeItemKind.Vent:
+                    return layout.WallCenter(item.Cell, item.WallDir, 1.18f);
+                case HomeItemKind.Gas:
+                    return layout.WallCenter(item.Cell, item.WallDir, 1.12f);
+                case HomeItemKind.ElectricCurtain:
+                    return layout.WallCenter(item.Cell, item.WallDir, 1.05f);
+                default:
+                    return layout.CellCenter(item.Cell, 1.0f);
+            }
         }
 
         private void LoadOrEmpty()
@@ -532,7 +614,9 @@ namespace Homepad.Home
                         if (data != null && (data.rooms.Count > 0 || data.items.Count > 0))
                         {
                             ApplySave(data);
+                            SwapLivingHeatAndVentIfNeeded();
                             EnsureLivingVent();
+                            EnsureKitchen();
                             EnsureRoomHeaters();
                             return;
                         }
@@ -548,23 +632,62 @@ namespace Homepad.Home
         }
 
         // 임시 테스트 세대. 나중에 집 설정 화면이 생기면 이 기본값만 빼면 된다.
+        // 배치: 방1 / 거실 | 주방 | 방3 | 방2
         private void SeedCheotmaeulDemo()
         {
             int step = HomeLayout.RoomSize;
             var living = service.CreateRoom(RoomHint.Living, Vector2Int.zero, "거실");
-            var room1 = service.CreateRoom(RoomHint.Master, new Vector2Int(step, 0), "방1");
-            var room2 = service.CreateRoom(RoomHint.Bedroom, new Vector2Int(0, step), "방2");
-            var room3 = service.CreateRoom(RoomHint.Bedroom2, new Vector2Int(step, step), "방3");
+            service.CreateRoom(RoomHint.Kitchen, new Vector2Int(step, 0), "주방");
+            var room3 = service.CreateRoom(RoomHint.Bedroom2, new Vector2Int(step * 2, 0), "방3");
+            var room2 = service.CreateRoom(RoomHint.Bedroom, new Vector2Int(step * 3, 0), "방2");
+            var room1 = service.CreateRoom(RoomHint.Master, new Vector2Int(0, step), "방1");
 
             PlaceDemoLights(living);
             PlaceDemoLights(room1);
             PlaceDemoLights(room2);
             PlaceDemoLights(room3);
             EnsureLivingVent();
+            EnsureKitchen();
             EnsureRoomHeaters();
 
             SelectRoom(living);
             Save();
+        }
+
+        private void EnsureKitchen()
+        {
+            bool added = false;
+            var kitchen = layout.FindRoom(RoomHint.Kitchen);
+            if (kitchen == null)
+            {
+                int step = HomeLayout.RoomSize;
+                var origin = new Vector2Int(step, 0);
+                kitchen = layout.RoomAt(origin) == null
+                    ? service.CreateRoom(RoomHint.Kitchen, origin, "주방")
+                    : service.CreateRoom(RoomHint.Kitchen, "주방");
+                added = kitchen != null;
+            }
+
+            for (int i = layout.Items.Count - 1; i >= 0; i--)
+            {
+                var item = layout.Items[i];
+                if (item.RoomHint != RoomHint.Kitchen) continue;
+                if (item.Kind != HomeItemKind.Light && item.Kind != HomeItemKind.Heating) continue;
+                if (service.RemoveItem(item.InstanceId)) added = true;
+            }
+
+            if (kitchen != null && !layout.HasSingleton(HomeItemKind.Gas, RoomHint.Kitchen))
+            {
+                var def = HomeItemDef.Create(HomeItemKind.Gas, kitchen.Hint, kitchen.Name);
+                var cell = service.DefaultCell(def, kitchen);
+                int wallDir = service.DefaultWallDir(def, kitchen, cell);
+                if (service.PlaceIntoRoom(def, kitchen, cell, wallDir) != null)
+                {
+                    added = true;
+                }
+            }
+
+            if (added) Save();
         }
 
         private void EnsureLivingVent()
@@ -574,8 +697,9 @@ namespace Homepad.Home
             if (living == null) return;
 
             var def = HomeItemDef.Create(HomeItemKind.Vent, living.Hint, living.Name);
-            var cell = service.DefaultCell(def, living);
-            int wallDir = service.DefaultWallDir(def, living, cell);
+            int wallDir = service.DefaultWallDir(def, living, service.DefaultCell(def, living));
+            wallDir = (wallDir + 1) & 3;
+            var cell = layout.EdgeCell(living, wallDir);
             if (service.PlaceIntoRoom(def, living, cell, wallDir) != null)
             {
                 Save();
@@ -588,16 +712,11 @@ namespace Homepad.Home
             for (int i = 0; i < layout.Rooms.Count; i++)
             {
                 var room = layout.Rooms[i];
-                if (room == null || layout.HasHeatingInHint(room.Hint)) continue;
+                if (room == null || room.Hint == RoomHint.Kitchen || layout.HasHeatingInHint(room.Hint)) continue;
 
                 var def = HomeItemDef.Create(HomeItemKind.Heating, room.Hint, room.Name);
                 var cell = service.DefaultCell(def, room);
                 int wallDir = service.DefaultWallDir(def, room, cell);
-                if (room.Hint == RoomHint.Living)
-                {
-                    wallDir = (wallDir + 1) & 3;
-                    cell = layout.EdgeCell(room, wallDir);
-                }
 
                 if (service.PlaceIntoRoom(def, room, cell, wallDir) != null)
                 {
@@ -606,6 +725,35 @@ namespace Homepad.Home
             }
 
             if (added) Save();
+        }
+
+        private void SwapLivingHeatAndVentIfNeeded()
+        {
+            PlacedItem heat = null;
+            PlacedItem vent = null;
+            for (int i = 0; i < layout.Items.Count; i++)
+            {
+                var item = layout.Items[i];
+                if (item.RoomHint != RoomHint.Living) continue;
+                if (item.Kind == HomeItemKind.Heating) heat = item;
+                else if (item.Kind == HomeItemKind.Vent) vent = item;
+            }
+
+            if (heat == null || vent == null) return;
+
+            var cam = Camera.main;
+            Vector3 forward = cam != null ? cam.transform.forward : new Vector3(1f, -1f, 1f);
+            int back = HomeLayout.CutawayView.FromCamera(forward).PrimaryBack;
+            int side = (back + 1) & 3;
+            if (heat.WallDir != side || vent.WallDir != back) return;
+
+            var cell = heat.Cell;
+            int dir = heat.WallDir;
+            heat.Cell = vent.Cell;
+            heat.WallDir = vent.WallDir;
+            vent.Cell = cell;
+            vent.WallDir = dir;
+            Save();
         }
 
         private void PlaceDemoLights(RoomRecord room)

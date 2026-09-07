@@ -144,7 +144,6 @@ namespace Homepad.Home
             new HomeItemDef("light_master", HomeItemKind.Light, Surface.Ceiling, RoomHint.Master, "안방 조명", false),
             new HomeItemDef("light_bed1", HomeItemKind.Light, Surface.Ceiling, RoomHint.Bedroom, "침실 조명", false),
             new HomeItemDef("light_bed2", HomeItemKind.Light, Surface.Ceiling, RoomHint.Bedroom2, "침실 2 조명", false),
-            new HomeItemDef("light_kitchen", HomeItemKind.Light, Surface.Ceiling, RoomHint.Kitchen, "주방 조명", false),
             new HomeItemDef("heat_living", HomeItemKind.Heating, Surface.Wall, RoomHint.Living, "거실 난방", true),
             new HomeItemDef("heat_master", HomeItemKind.Heating, Surface.Wall, RoomHint.Master, "안방 난방", true),
             new HomeItemDef("heat_bed1", HomeItemKind.Heating, Surface.Wall, RoomHint.Bedroom, "침실 난방", true),

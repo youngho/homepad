@@ -38,8 +38,9 @@ namespace Homepad.Editor
             var room = BuildLivingRoom(oak, plaster, trim, fabric, cushion, rug, glass, sky, table);
             var lamp = BuildLamp(metal, shade);
             var heater = BuildHeater(heat, plate);
+            var gas = BuildGasValve(heat, metal, GasHandle(Root + "/Materials/GasHandle.mat"));
 
-            AssignToScene(room, lamp, heater);
+            AssignToScene(room, lamp, heater, gas);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
         }
@@ -119,7 +120,48 @@ namespace Homepad.Editor
             return SavePrefab(root, Root + "/Prefabs/WallHeater.prefab");
         }
 
+        static Material GasHandle(string path)
+        {
+            var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (existing != null) return existing;
+            return Emissive(path, new Color(0.95f, 0.78f, 0.12f), new Color(0.55f, 0.38f, 0.04f));
+        }
 
+        static GameObject BuildGasValve(Material body, Material metal, Material handle)
+        {
+            var root = new GameObject("WallGasValve");
+            Box("Plate", root.transform, Vector3.zero, new Vector3(0.32f, 0.42f, 0.05f), body);
+            Box("Stem", root.transform, new Vector3(0f, 0.02f, -0.06f), new Vector3(0.04f, 0.04f, 0.1f), metal);
+            Box("Handle", root.transform, new Vector3(0f, 0.02f, -0.12f), new Vector3(0.18f, 0.04f, 0.04f), handle);
+            Box("HandleCross", root.transform, new Vector3(0f, 0.02f, -0.12f), new Vector3(0.04f, 0.18f, 0.04f), handle);
+            return SavePrefab(root, Root + "/Prefabs/WallGasValve.prefab");
+        }
+
+        public static void BakeGasValve()
+        {
+            EnsureFolder("Assets/Home");
+            EnsureFolder(Root);
+            EnsureFolder(Root + "/Materials");
+            EnsureFolder(Root + "/Prefabs");
+
+            var body = AssetDatabase.LoadAssetAtPath<Material>(Root + "/Materials/HeaterBody.mat");
+            var metal = AssetDatabase.LoadAssetAtPath<Material>(Root + "/Materials/LampMetal.mat");
+            if (body == null) body = Lit(Root + "/Materials/HeaterBody.mat", new Color(0.4f, 0.38f, 0.36f), 0.45f);
+            if (metal == null) metal = Lit(Root + "/Materials/LampMetal.mat", new Color(0.72f, 0.7f, 0.66f), 0.7f);
+
+            var prefab = BuildGasValve(body, metal, GasHandle(Root + "/Materials/GasHandle.mat"));
+            var builder = Object.FindFirstObjectByType<IsometricHomeBuilder>();
+            if (builder != null)
+            {
+                var so = new SerializedObject(builder);
+                so.FindProperty("wallGasValvePrefab").objectReferenceValue = prefab;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(builder);
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+        }
 
         static GameObject Box(string name, Transform parent, Vector3 localPos, Vector3 scale, Material mat)
         {
@@ -174,7 +216,7 @@ namespace Homepad.Editor
             return prefab;
         }
 
-        static void AssignToScene(GameObject room, GameObject lamp, GameObject heater)
+        static void AssignToScene(GameObject room, GameObject lamp, GameObject heater, GameObject gas)
         {
             var builder = Object.FindFirstObjectByType<IsometricHomeBuilder>();
             if (builder == null) return;
@@ -182,6 +224,7 @@ namespace Homepad.Editor
             so.FindProperty("livingRoomPrefab").objectReferenceValue = room;
             so.FindProperty("ceilingLampPrefab").objectReferenceValue = lamp;
             so.FindProperty("wallHeaterPrefab").objectReferenceValue = heater;
+            so.FindProperty("wallGasValvePrefab").objectReferenceValue = gas;
             so.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(builder);
         }
