@@ -129,8 +129,10 @@ HEX 테스트에서 `BD`/`BE`를 직접 만들 필요는 거의 없다. 로그�
 
 ---
 
-## 6. 코드와 캡처가 어긋난 점
+## 6. 방 코드와 버스 바이트
 
-`KocomProtocol.BuildFrame`은 바이트 8–9를 `room`으로 넣고, 캡처 프리셋은 방을 바이트 6–7에 둔다. HEX 테스트 표와 실버스 해석이 다를 수 있다. 실버스 조명은 **장치 `00 0E` | 방 | 명령 | 슬롯들**을 기준으로 본다.
+앱의 방 코드 `00 01` / `01 01`은 DEST 방 + 월패드 장치 ID(`01`)가 붙은 값이다. `BuildRequest`가 이 16비트를 바이트 6–7에 넣으면 버스에는 `DEST방 | SRC=월패드`가 실인다. 장치가 답할 때는 SRC/DEST가 뒤집히므로 방은 바이트 8(SRC 방)을 본다. 껍데기 세부는 `Docs/kocom-packet-21bytes.md`.
+
+실버스 조명은 **장치 `0E` | 방 번호 | 명령 `00`/`3A` | 슬롯들**을 기준으로 본다.
 
 관련 소스: `Assets/Scripts/Core/KocomProtocol.cs`, `Assets/Scripts/Core/WallpadManager.cs`, `Docs/kocom-hex.md`.

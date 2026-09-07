@@ -7,9 +7,10 @@ namespace Homepad.Core
 {
     /// <summary>
     /// 코콤 RS-485 21바이트 프레임.
-    /// AA 55 | TYPE | SRC | DST | ROOM | VALUE[8] | CS | 0D 0D
+    /// AA 55 | TYPE | 00 | DEST장치 DEST방 | SRC장치 SRC방 | CMD | VALUE[8] | CS | 0D 0D
     /// TYPE 0x30BC 월패드 송신, 0x30DC 장치 보고.
     /// CS = bytes[2..17] 합 modulo 256.
+    /// 방 코드(0x0001 거실, 0x0101 방1 …)는 앱 안 식별자고, 버스에는 방 번호 1바이트만 실인다.
     /// </summary>
     public static class KocomProtocol
     {
@@ -47,6 +48,17 @@ namespace Homepad.Core
         public const ushort CommandQuery = 0x003A;
         public const ushort CommandDoorStatus = 0x0001;
         public const ushort CommandDoorUnlock = 0x0002;
+        public const byte CmdState = 0x00;
+        public const byte CmdOn = 0x01;
+        public const byte CmdOff = 0x02;
+        public const byte CmdQuery = 0x3A;
+        public const byte DeviceByteWallpad = 0x01;
+        public const byte DeviceByteLight = 0x0E;
+        public const byte DeviceByteHeating = 0x36;
+        public const byte DeviceByteGas = 0x2C;
+        public const byte DeviceByteVentilation = 0x48;
+        public const byte DeviceByteElevator = 0x44;
+        public const byte DeviceByteDoorLock = 0x33;
 
         public const byte VentCmdOff = 0x00;
         public const byte VentCmdOn = 0x11;
@@ -60,6 +72,12 @@ namespace Homepad.Core
         public struct Frame
         {
             public ushort type;
+            public byte destDevice;
+            public byte destRoom;
+            public byte srcDevice;
+            public byte srcRoom;
+            public byte command;
+            // 바이트 4–7의 16비트 묶음. 도어락 등 기존 비교용.
             public ushort source;
             public ushort destination;
             public ushort room;
@@ -70,21 +88,41 @@ namespace Homepad.Core
             {
                 get
                 {
-                    if (IsKnownDevice(destination)) return destination;
-                    if (IsKnownDevice(source)) return source;
-                    return destination;
+                    if (IsKnownDeviceByte(destDevice)) return DeviceCode(destDevice);
+                    if (IsKnownDeviceByte(srcDevice)) return DeviceCode(srcDevice);
+                    return DeviceCode(destDevice);
                 }
             }
         }
 
         public static bool IsKnownDevice(ushort address)
         {
-            return address == DeviceLight
-                || address == DeviceHeating
-                || address == DeviceGas
-                || address == DeviceVentilation
-                || address == DeviceElevator
-                || address == DeviceDoorLock;
+            return IsKnownDeviceByte((byte)(address & 0xFF));
+        }
+
+        public static bool IsKnownDeviceByte(byte device)
+        {
+            return device == DeviceByteLight
+                || device == DeviceByteHeating
+                || device == DeviceByteGas
+                || device == DeviceByteVentilation
+                || device == DeviceByteElevator
+                || device == DeviceByteDoorLock;
+        }
+
+        public static ushort DeviceCode(byte device)
+        {
+            return device;
+        }
+
+        public static ushort RoomCodeFromIndex(byte roomIndex)
+        {
+            return (ushort)((roomIndex << 8) | DeviceByteWallpad);
+        }
+
+        public static byte RoomIndexFromCode(ushort roomCode)
+        {
+            return (byte)((roomCode >> 8) & 0xFF);
         }
 
         public static byte[] BuildFrame(ushort destination, ushort room, byte[] value8, ushort source = AddressWallpad, ushort type = TypeTransmit)
@@ -100,6 +138,7 @@ namespace Homepad.Core
             packet[0] = Header1;
             packet[1] = Header2;
             WriteUInt16(packet, 2, type);
+            // 월패드 송신은 16비트 장치/방/명령이 버스의 pad+DEST / DEST방+SRC장치 / SRC방+CMD 와 같은 바이트가 된다.
             WriteUInt16(packet, 4, source);
             WriteUInt16(packet, 6, destination);
             WriteUInt16(packet, 8, room);
@@ -110,7 +149,7 @@ namespace Homepad.Core
             return packet;
         }
 
-        // HEX 테스트 프리셋과 같다: 30 BC | 장치 | 방 | 명령 | VALUE
+        // 월패드 송신: 30 BC | 장치 | 방코드 | 명령 | VALUE. 방코드 0101은 DEST방=01 + SRC=월패드.
         public static byte[] BuildRequest(ushort device, ushort room, ushort command, byte[] value8)
         {
             return BuildFrame(room, command, value8, device, TypeTransmit);
@@ -142,26 +181,25 @@ namespace Homepad.Core
             return copy;
         }
 
-        // 바이트 8–9. 필드명은 room이지만 버스에선 명령(00 00 제어, 00 3A 조회).
+        // 바이트 9. 조회는 0x3A, 제어/상태 보고는 0x00.
         public static ushort CommandOf(Frame frame)
         {
-            return frame.room;
+            return frame.command;
         }
 
         // TYPE × CMD.
-        // 30 DC + (00 3A 조회 에코 | 00 00 제어 보고 | 그 외 STA 명령) → VALUE를 메모리에 넣는다.
-        // 30 BC/BD/BE + 00 3A → 조회 요청이므로 넣지 않는다.
+        // 30 DC → VALUE를 메모리에 넣는다.
+        // 30 BC/BD/BE + 조회(0x3A) → 넣지 않는다.
         public static bool ShouldApplyState(Frame frame)
         {
-            ushort cmd = CommandOf(frame);
             if (frame.type == TypeReport) return true;
-            if (IsRequestType(frame.type) && cmd == CommandQuery) return false;
+            if (IsRequestType(frame.type) && frame.command == CmdQuery) return false;
             return false;
         }
 
         public static bool IsQuery(Frame frame)
         {
-            return IsRequestType(frame.type) && CommandOf(frame) == CommandQuery;
+            return IsRequestType(frame.type) && frame.command == CmdQuery;
         }
 
         public static bool IsKnownRoom(ushort address)
@@ -169,26 +207,16 @@ namespace Homepad.Core
             return address == 0x0001 || address == 0x0101 || address == 0x0201 || address == 0x0301;
         }
 
+        public static byte RoomIndexOf(Frame frame)
+        {
+            if (IsKnownDeviceByte(frame.destDevice)) return frame.destRoom;
+            if (IsKnownDeviceByte(frame.srcDevice)) return frame.srcRoom;
+            return frame.destRoom;
+        }
+
         public static ushort ResolveRoom(Frame frame)
         {
-            if (frame.room != CommandControl && frame.room != CommandQuery && IsKnownRoom(frame.room))
-            {
-                return frame.room;
-            }
-
-            if (IsKnownDevice(frame.source) && IsKnownRoom(frame.destination))
-            {
-                return frame.destination;
-            }
-
-            if (IsKnownDevice(frame.destination) && IsKnownRoom(frame.source))
-            {
-                return frame.source;
-            }
-
-            if (IsKnownRoom(frame.destination)) return frame.destination;
-            if (IsKnownRoom(frame.source)) return frame.source;
-            return frame.room;
+            return RoomCodeFromIndex(RoomIndexOf(frame));
         }
 
         public static byte[] CreateLightRoomPacket(ushort room, IReadOnlyList<LightState> lightsInRoom)
@@ -233,7 +261,7 @@ namespace Homepad.Core
 
         public static byte[] CreateGasClosePacket()
         {
-            return BuildRequest(DeviceGas, 0x0001, CommandControl, new byte[8]);
+            return BuildRequest(DeviceGas, 0x0001, CmdOff, new byte[8]);
         }
 
         public static byte[] CreateVentilationPacket(VentilationSpeed speed, bool fromOff = false)
@@ -314,7 +342,7 @@ namespace Homepad.Core
 
         public static byte[] CreateElevatorCallPacket()
         {
-            return BuildRequest(DeviceElevator, 0x0001, CommandControl, new byte[8]);
+            return BuildFrame(DeviceElevator, CmdOn, new byte[8], AddressWallpad, TypeTransmit);
         }
 
         public static byte[] CreateDoorUnlockPacket()
@@ -336,9 +364,14 @@ namespace Homepad.Core
             if (ComputeChecksum(raw) != raw[18]) return false;
 
             frame.type = ReadUInt16(raw, 2);
+            frame.destDevice = raw[5];
+            frame.destRoom = raw[6];
+            frame.srcDevice = raw[7];
+            frame.srcRoom = raw[8];
+            frame.command = raw[9];
             frame.source = ReadUInt16(raw, 4);
             frame.destination = ReadUInt16(raw, 6);
-            frame.room = ReadUInt16(raw, 8);
+            frame.room = ResolveRoom(frame);
             frame.value = new byte[8];
             Array.Copy(raw, 10, frame.value, 0, 8);
             frame.checksum = raw[18];
@@ -426,18 +459,16 @@ namespace Homepad.Core
             if (packet == null || packet.Length < PacketSize) return Array.Empty<HexTableField>();
 
             ushort type = ReadUInt16(packet, 2);
-            ushort addr1 = ReadUInt16(packet, 4);
-            ushort addr2 = ReadUInt16(packet, 6);
-            ushort cmd = ReadUInt16(packet, 8);
             bool checksumOk = ComputeChecksum(packet) == packet[18];
 
             return new[]
             {
                 new HexTableField("HDR", HexPair(packet, 0)),
                 new HexTableField("TYPE", HexPair(packet, 2), DescribeType(type)),
-                new HexTableField("DEV", HexPair(packet, 4), DescribeDevice(addr1)),
-                new HexTableField("ADDR", HexPair(packet, 6), DescribeAddr(addr2)),
-                new HexTableField("CMD", HexPair(packet, 8), DescribeCommand(cmd)),
+                new HexTableField("PAD", packet[4].ToString("X2")),
+                new HexTableField("DEST", $"{packet[5]:X2} {packet[6]:X2}", DescribePeer(packet[5], packet[6])),
+                new HexTableField("SRC", $"{packet[7]:X2} {packet[8]:X2}", DescribePeer(packet[7], packet[8])),
+                new HexTableField("CMD", packet[9].ToString("X2"), DescribeCommandByte(packet[9])),
                 new HexTableField("VAL", ToHexSlice(packet, 10, 8), null, true),
                 new HexTableField("CS", packet[18].ToString("X2"), checksumOk ? string.Empty : "오류"),
                 new HexTableField("END", HexPair(packet, 19))
@@ -494,47 +525,58 @@ namespace Homepad.Core
             };
         }
 
-        private static string DescribeDevice(ushort address)
+        private static string DescribeDeviceByte(byte device)
         {
-            return address switch
+            return device switch
             {
-                DeviceLight => "조명",
-                DeviceHeating => "난방",
-                DeviceVentilation => "환기",
-                DeviceDoorLock => "도어락",
-                DeviceGas => "가스",
-                DeviceElevator => "엘리베이터",
-                AddressWallpad => "월패드",
+                DeviceByteLight => "조명",
+                DeviceByteHeating => "난방",
+                DeviceByteVentilation => "환기",
+                DeviceByteDoorLock => "도어락",
+                DeviceByteGas => "가스",
+                DeviceByteElevator => "엘리베이터",
+                DeviceByteWallpad => "월패드",
                 _ => string.Empty
             };
         }
 
-        private static string DescribeAddr(ushort address)
+        private static string DescribeRoomIndex(byte room)
         {
-            string device = DescribeDevice(address);
-            if (!string.IsNullOrEmpty(device) && address != AddressWallpad)
+            return room switch
             {
-                return device;
+                0 => "거실",
+                1 => "방1",
+                2 => "방2",
+                3 => "방3",
+                _ => string.Empty
+            };
+        }
+
+        private static string DescribePeer(byte device, byte room)
+        {
+            string dev = DescribeDeviceByte(device);
+            string roomName = DescribeRoomIndex(room);
+            if (device == DeviceByteWallpad)
+            {
+                return "월패드";
             }
 
-            return address switch
+            if (!string.IsNullOrEmpty(dev) && !string.IsNullOrEmpty(roomName))
             {
-                0x0001 => "거실",
-                0x0101 => "방1",
-                0x0201 => "방2",
-                0x0301 => "방3",
-                _ => string.Empty
-            };
+                return dev + " " + roomName;
+            }
+
+            return dev;
         }
 
-        private static string DescribeCommand(ushort command)
+        private static string DescribeCommandByte(byte command)
         {
             return command switch
             {
-                0x0000 => "제어",
-                0x003A => "조회",
-                0x0001 => "상태",
-                0x0002 => "열림요청",
+                CmdState => "제어",
+                CmdQuery => "조회",
+                CmdOn => "on",
+                CmdOff => "off",
                 _ => string.Empty
             };
         }
@@ -550,13 +592,14 @@ namespace Homepad.Core
                 _ => $"타입(0x{frame.type:X4})"
             };
 
-            string roomStr = frame.room switch
+            ushort roomCode = ResolveRoom(frame);
+            string roomStr = roomCode switch
             {
                 0x0001 => "거실",
                 0x0101 => "방1",
                 0x0201 => "방2",
                 0x0301 => "방3",
-                _ => $"방(0x{frame.room:X4})"
+                _ => $"방(0x{roomCode:X4})"
             };
 
             ushort dev = frame.DeviceAddress;
@@ -629,9 +672,9 @@ namespace Homepad.Core
             }
             else if (dev == DeviceDoorLock)
             {
-                if (frame.source == AddressWallpad && frame.destination == DeviceDoorLock)
+                if (frame.srcDevice == DeviceByteDoorLock && frame.destDevice == DeviceByteWallpad)
                     sb.Append("문열림 요청 (트리거)");
-                else if (frame.source == DeviceDoorLock && frame.destination == AddressWallpad)
+                else if (frame.destDevice == DeviceByteDoorLock && frame.srcDevice == DeviceByteWallpad)
                     sb.Append("도어락 상태 보고");
                 else
                     sb.Append("도어락 응답/신호");

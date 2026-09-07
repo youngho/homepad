@@ -586,7 +586,18 @@ namespace Homepad.Core
                     ApplyHeatingFrame(frame);
                     break;
                 case KocomProtocol.DeviceGas:
-                    gas.isOpen = frame.value != null && frame.value.Length > 0 && frame.value[0] != 0x00;
+                    if (frame.command == KocomProtocol.CmdOn)
+                    {
+                        gas.isOpen = true;
+                    }
+                    else if (frame.command == KocomProtocol.CmdOff)
+                    {
+                        gas.isOpen = false;
+                    }
+                    else
+                    {
+                        gas.isOpen = frame.value != null && frame.value.Length > 0 && frame.value[0] != 0x00;
+                    }
                     OnGasChanged?.Invoke(gas);
                     RaiseStateChanged();
                     break;
@@ -729,7 +740,7 @@ namespace Homepad.Core
 
         private void ApplyDoorLockFrame(KocomProtocol.Frame frame)
         {
-            if (frame.source != KocomProtocol.DeviceDoorLock) return;
+            if (frame.destDevice != KocomProtocol.DeviceByteDoorLock) return;
 
             SetDoorOpen(true);
             connector?.SendPacket(KocomProtocol.CreateDoorLockAckPacket());

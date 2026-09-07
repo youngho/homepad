@@ -6,7 +6,7 @@
 - [iquix/kocom.py](https://github.com/iquix/kocom.py) — 바이트 9를 명령 1바이트로 읽음
 - [wknight1/hacs-kocom-wallpad](https://github.com/wknight1/hacs-kocom-wallpad) — `PacketFrame.command = raw[9]`
 
-프레임은 항상 **21바이트**다. 체크섬·TYPE·VALUE는 `Assets/Scripts/Core/KocomProtocol.cs`와 같다. 주소·명령 칸은 코드가 아직 16비트로 묶고, 실버스는 1바이트 단위다.
+프레임은 항상 **21바이트**다. 체크섬·TYPE·VALUE는 `Assets/Scripts/Core/KocomProtocol.cs`와 같다. 파서는 DEST/SRC/CMD를 1바이트로 읽고, 월패드 송신 `BuildRequest`는 16비트 장치·방 코드로 같은 바이트를 만든다.
 
 ```
 AA 55 | TYPE | 00 | DEST장치 DEST방 | SRC장치 SRC방 | CMD | VALUE[8] | CS | 0D 0D
@@ -110,7 +110,7 @@ hacs-kocom-wallpad에만 더 보이는 값. 이 집 캡처에는 아직 없다.
 
 장치가 방1에서 답하면 바이트 8이 `01`이 되어 8–9가 `01 00`이 된다. 이건 명령 `0100`이 아니라 **SRC 방=1 + CMD=state**다.
 
-우리 코드는 아직 8–9를 `ushort room` / `CommandOf`로 묶는다. `CommandControl = 0x0000`, `CommandQuery = 0x003A`. 월패드 송신 프리셋에는 맞지만, 장치 응답의 `01 00`은 명령으로 읽으면 틀린다.
+`KocomProtocol.TryParse`는 DEST/SRC/CMD를 1바이트로 읽고, `ResolveRoom`은 장치 쪽 방 번호로 `0x0101` 같은 앱 방 코드를 만든다. 월패드 송신 `BuildRequest`는 예전처럼 16비트 장치·방·명령을 넣지만, 그 바이트가 버스 배치와 같다.
 
 ---
 
@@ -159,9 +159,9 @@ hacs-kocom-wallpad에만 더 보이는 값. 이 집 캡처에는 아직 없다.
 
 16비트로 보면 응답 8–9가 `01 00`이다. 1바이트로 보면 SRC 방 `01` + CMD `00`이다.
 
-`DeviceAddress`는 destination이 알려진 장치면 그것을, 아니면 source가 알려진 장치면 그것을 쓴다. 장치 ID가 ADDR1(바이트 4–5)에 있어도 환기/조명으로 인식되는 이유다. 1바이트 모델에서는 바이트 5 또는 7이 그 장치 ID다.
+`DeviceAddress`는 DEST 장치가 알려진 장치면 그것을, 아니면 SRC 장치가 알려진 장치면 그것을 쓴다.
 
-녹색 HEX 로그의 `DecodeFrame`은 바이트 8–9를 16비트 방으로 본다. 월패드 송신 예시(`00 00`)는 거기가 명령이라 로그에 `방(0x0000)`이 나온다. 실버스 기준 방은 DEST 방(바이트 6)이다.
+녹색 HEX 로그의 `DecodeFrame`은 `ResolveRoom`으로 방을 붙인다. 방1 조명 응답(`SRC 방=01`)은 `방1`로 나온다.
 
 ---
 
@@ -221,7 +221,7 @@ hacs-kocom-wallpad에만 더 보이는 값. 이 집 캡처에는 아직 없다.
 
 ### 가스 (`2C`)
 
-iquix/hacs는 가스 ON/OFF를 VALUE가 아니라 **CMD 바이트 9**로 본다. `01` 열림, `02` 닫힘. 우리 코드는 VALUE[0]이 `00`이 아니면 열림으로 본다.
+iquix/hacs는 가스 ON/OFF를 VALUE가 아니라 **CMD 바이트 9**로 본다. `01` 열림, `02` 닫힘. `CreateGasClosePacket`은 CMD=`02`를 넣고, 수신은 CMD가 `01`/`02`이면 그 값을, 아니면 VALUE[0]을 본다.
 
 ### 도어락 (`33`)
 
@@ -255,9 +255,9 @@ AA 55 30 BC 00 48 00 01 00 00 11 03 40 00 00 00 00 00 89 0D 0D
 7. `11` 가동, `40` 1단 풍량
 8. `89` 체크섬, `0D 0D` 끝
 
-지금 코드/로그는 8–9를 방으로 읽어서 `방(0x0000)`이 나온다.
+지금 코드는 DEST 방(바이트 6) 또는 장치가 답할 때 SRC 방(바이트 8)으로 방을 붙인다.
 
-녹색 로그 예: `[RX 수신] [요청(REQ)] 환기 (방(0x0000)) ON (가동)`
+녹색 로그 예: `[RX 수신] [요청(REQ)] 환기 (거실) ON (가동)`
 
 방1 조명 스위치1 ON (요청–응답):
 
@@ -280,7 +280,7 @@ AA 55 30 DC 00 01 00 0E 01 00 FF 00 00 00 00 00 00 00 1B 0D 0D
 
 | 파일 | 역할 |
 |---|---|
-| `Assets/Scripts/Core/KocomProtocol.cs` | 21바이트 파싱, 체크섬, `DecodeFrame` 한글 해석. 주소·명령을 아직 16비트로 묶음 |
+| `Assets/Scripts/Core/KocomProtocol.cs` | 21바이트 파싱, 체크섬, `DecodeFrame` 한글 해석. DEST/SRC/CMD는 1바이트 |
 | `Assets/Scripts/UI/KocomHexTestUI.cs` | `[RX 수신]` 녹색 로그 표시 |
 | `Assets/Scripts/Core/WallpadManager.cs` | 수신 프레임을 집 상태에 반영 |
 | `Docs/kocom-hex.md` | 장치별 HEX 프리셋 목록 |
