@@ -226,6 +226,23 @@ namespace Homepad.Core
             RaiseStateChanged();
         }
 
+        public void QueryDeviceStatus(ushort device, ushort room)
+        {
+            if (connector == null) return;
+            if (!connector.IsConnected && !connector.UseSimulationMode) return;
+
+            pendingQueryDevice = device;
+            pendingQueryRoom = room;
+            connector.SendPacket(KocomProtocol.CreateStatusQueryPacket(device, room));
+        }
+
+        public void QueryHeating(int roomId)
+        {
+            var room = heatingRooms.Find(item => item.roomId == roomId);
+            if (room == null) return;
+            QueryDeviceStatus(KocomProtocol.DeviceHeating, room.roomCode);
+        }
+
         public void CloseGasValve()
         {
             gas.isOpen = false;

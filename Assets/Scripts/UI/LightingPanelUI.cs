@@ -105,6 +105,7 @@ namespace Homepad.UI
             RebuildSlots(roomLights);
             BindClicks();
             RefreshAll();
+            WallpadManager.Instance?.QueryDeviceStatus(KocomProtocol.DeviceLight, roomCode);
         }
 
         private void ResolveTemplate()

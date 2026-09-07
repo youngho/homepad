@@ -32,6 +32,7 @@ namespace Homepad.UI
 
             BindClicks();
             RefreshAll();
+            WallpadManager.Instance?.QueryHeating(roomId);
         }
 
         private void OnEnable()

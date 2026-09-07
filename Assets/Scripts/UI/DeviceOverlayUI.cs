@@ -1,3 +1,4 @@
+using Homepad.Core;
 using Homepad.Home;
 using UnityEngine;
 using UnityEngine.UI;
@@ -55,9 +56,11 @@ namespace Homepad.UI
                     break;
                 case HomeItemKind.Gas:
                     ShowRoot(gasRoot);
+                    WallpadManager.Instance?.QueryDeviceStatus(KocomProtocol.DeviceGas, 0x0001);
                     break;
                 case HomeItemKind.Vent:
                     ShowRoot(ventRoot);
+                    WallpadManager.Instance?.QueryDeviceStatus(KocomProtocol.DeviceVentilation, 0x0001);
                     break;
                 case HomeItemKind.Elevator:
                     ShowRoot(elevatorRoot);
