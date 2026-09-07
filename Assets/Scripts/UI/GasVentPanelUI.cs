@@ -39,11 +39,11 @@ namespace Homepad.UI
 
         private void Start()
         {
-            Bind(gasCloseButton, () => WallpadManager.Instance.CloseGasValve());
-            Bind(offButton, () => WallpadManager.Instance.SetVentilationSpeed(VentilationSpeed.Off));
-            Bind(lowButton, () => WallpadManager.Instance.SetVentilationSpeed(VentilationSpeed.Low));
-            Bind(medButton, () => WallpadManager.Instance.SetVentilationSpeed(VentilationSpeed.Medium));
-            Bind(highButton, () => WallpadManager.Instance.SetVentilationSpeed(VentilationSpeed.High));
+            Bind(gasCloseButton, () => WallpadManager.Instance?.CloseGasValve());
+            Bind(offButton, () => WallpadManager.Instance?.SetVentilationSpeed(VentilationSpeed.Off));
+            Bind(lowButton, () => WallpadManager.Instance?.SetVentilationSpeed(VentilationSpeed.Low));
+            Bind(medButton, () => WallpadManager.Instance?.SetVentilationSpeed(VentilationSpeed.Medium));
+            Bind(highButton, () => WallpadManager.Instance?.SetVentilationSpeed(VentilationSpeed.High));
 
             if (WallpadManager.Instance != null)
             {

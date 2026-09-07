@@ -238,14 +238,20 @@ namespace Homepad.UI
             if (WallpadManager.Instance != null && WallpadManager.Instance.Connector != null)
             {
                 connector = WallpadManager.Instance.Connector;
+                connector.PersistIfStandalone();
                 return connector;
             }
 
-            connector = FindFirstObjectByType<ArduinoConnector>();
-            if (connector != null) return connector;
+            connector = ArduinoConnector.FindPreferred();
+            if (connector != null)
+            {
+                connector.PersistIfStandalone();
+                return connector;
+            }
 
             var go = new GameObject("ArduinoSerial");
             connector = go.AddComponent<ArduinoConnector>();
+            connector.PersistIfStandalone();
             AppendLog("[시스템] 씬에 ArduinoConnector가 없어 시리얼 브리지를 생성했습니다.", false);
             return connector;
         }

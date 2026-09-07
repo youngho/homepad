@@ -96,16 +96,16 @@ namespace Homepad.UI
                 {
                     var room = FindRoom(roomId);
                     if (room == null) return;
-                    WallpadManager.Instance.SetHeatingTargetTemp(roomId, room.targetTemp - 0.5f);
+                    WallpadManager.Instance?.SetHeatingTargetTemp(roomId, room.targetTemp - 0.5f);
                 });
                 BindButton(rooms[i].upButton, () =>
                 {
                     var room = FindRoom(roomId);
                     if (room == null) return;
-                    WallpadManager.Instance.SetHeatingTargetTemp(roomId, room.targetTemp + 0.5f);
+                    WallpadManager.Instance?.SetHeatingTargetTemp(roomId, room.targetTemp + 0.5f);
                 });
-                BindButton(rooms[i].powerButton, () => WallpadManager.Instance.ToggleHeatingPower(roomId));
-                BindButton(rooms[i].awayButton, () => WallpadManager.Instance.ToggleHeatingAway(roomId));
+                BindButton(rooms[i].powerButton, () => WallpadManager.Instance?.ToggleHeatingPower(roomId));
+                BindButton(rooms[i].awayButton, () => WallpadManager.Instance?.ToggleHeatingAway(roomId));
             }
         }
 

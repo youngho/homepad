@@ -249,12 +249,24 @@ namespace Homepad.Editor
 
             SetAnchors((RectTransform)settingsBtn, 0.865f, 0.12f, 0.985f, 0.88f);
             SetText(settingsBtn.Find("Text"), "설정", SemiBold, 18);
+
+            var hexBtn = header.Find("HexTestScene");
+            if (hexBtn == null)
+            {
+                var copy = Object.Instantiate(settingsBtn.gameObject, header, false);
+                copy.name = "HexTestScene";
+                hexBtn = copy.transform;
+            }
+
+            SetAnchors((RectTransform)hexBtn, 0.745f, 0.12f, 0.855f, 0.88f);
+            SetText(hexBtn.Find("Text"), "HEX 테스트", SemiBold, 18);
+
             var wifi = header.Find("Wifi");
             if (wifi != null)
             {
                 var wifiRt = (RectTransform)wifi;
                 wifiRt.anchorMin = new Vector2(0.62f, 0.18f);
-                wifiRt.anchorMax = new Vector2(0.85f, 0.82f);
+                wifiRt.anchorMax = new Vector2(0.735f, 0.82f);
                 wifiRt.offsetMin = Vector2.zero;
                 wifiRt.offsetMax = Vector2.zero;
             }
@@ -266,6 +278,7 @@ namespace Homepad.Editor
         {
             var hexLog = root.Find("HexLog");
             var settingsBtn = header.Find("SettingsButton");
+            var hexBtn = header.Find("HexTestScene");
             var close = settings.Find("Close");
 
             var old = settings.GetComponent<NetworkSettingsUI>();
@@ -284,6 +297,7 @@ namespace Homepad.Editor
             var controller = root.GetComponent<WallpadUIController>();
             if (controller == null) return;
             SetField(controller, "settingsButton", settingsBtn != null ? settingsBtn.GetComponent<Button>() : null);
+            SetField(controller, "hexTestButton", hexBtn != null ? hexBtn.GetComponent<Button>() : null);
             SetField(controller, "settingsCloseButton", close != null ? close.GetComponent<Button>() : null);
             SetField(controller, "settingsPanel", settings.gameObject);
         }

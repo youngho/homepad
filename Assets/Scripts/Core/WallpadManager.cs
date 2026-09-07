@@ -88,6 +88,12 @@ namespace Homepad.Core
 
         public ArduinoConnector EnsureConnector()
         {
+            var live = ArduinoConnector.FindPreferred();
+            if (live != null)
+            {
+                connector = live;
+            }
+
             if (!connector)
             {
                 connector = GetComponent<ArduinoConnector>();

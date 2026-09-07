@@ -88,6 +88,37 @@ namespace Homepad.Core
             UnityMainThreadDispatcher.EnsureExists();
         }
 
+        public static ArduinoConnector FindPreferred()
+        {
+            var all = FindObjectsByType<ArduinoConnector>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            ArduinoConnector connected = null;
+            ArduinoConnector standalone = null;
+            ArduinoConnector any = null;
+            for (int i = 0; i < all.Length; i++)
+            {
+                var candidate = all[i];
+                if (candidate == null) continue;
+                if (any == null) any = candidate;
+                if (standalone == null && candidate.GetComponent<WallpadManager>() == null)
+                {
+                    standalone = candidate;
+                }
+
+                if (candidate.IsConnected)
+                {
+                    connected = candidate;
+                }
+            }
+
+            return connected != null ? connected : (standalone != null ? standalone : any);
+        }
+
+        public void PersistIfStandalone()
+        {
+            if (GetComponent<WallpadManager>() != null) return;
+            DontDestroyOnLoad(gameObject);
+        }
+
         public static string[] ListSerialPorts()
         {
             return NativeSerialPort.GetPortNames();

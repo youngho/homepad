@@ -1,0 +1,27 @@
+---
+description: Unity MCP가 응답없음이 되지 않게 호출하고, UI get_components로 에디터를 멈추지 않는다.
+alwaysApply: true
+---
+
+# Unity MCP — 응답없음 방지
+
+Cursor MCP는 공식 릴레이만 쓴다 (`unity-mcp`, `--mcp --project-path /Users/yoho/github/homepad`).
+Coplay MCP와 동시에 붙이지 않는다.
+
+에디터가 컴파일·임포트·도메인 리로드 중이면 도구를 호출하지 않는다. 스크립트를 고친 뒤에는 Unity가 다시 놀 때까지 기다린 다음, 가벼운 `Unity_ManageEditor` GetState만 먼저 친다.
+
+타임아웃(`-32001`)이 나면 같은 호출을 반복하지 않는다. 죽은 소켓을 두드리면 릴레이 CPU가 치솟고 Cursor가 응답없음이 된다. 유저에게 Unity가 놀 때 MCP를 재연결하라고 한 뒤, 씬 YAML·스크립트 편집으로 작업을 이어간다.
+
+## 금지 (에디터가 멈춘다)
+
+Canvas / WallpadRoot / 버튼 / Text / Image 등 **UI 계층에 `get_components` 하지 마라.** 공식 문서 버그. 컴포넌트는 씬 YAML을 읽거나 `Unity_RunCommand`로 필요한 필드만 읽는다.
+
+```text
+# BAD — UI 경로 get_components → Editor freeze, MCP 응답없음
+Unity_ManageGameObject action=get_components target=Canvas/WallpadRoot/Header/SettingsButton
+
+# GOOD — 씬 YAML 또는 RunCommand로 기존 객체만 수정
+Canvas/WallpadRoot/Header 아래 기존 버튼을 복제·앵커·텍스트만 바꾼다
+```
+
+씬 HUD는 코드로 조립하지 않는다. 기존 씬 객체를 편집한다.

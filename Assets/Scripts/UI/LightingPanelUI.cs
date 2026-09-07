@@ -272,7 +272,7 @@ namespace Homepad.UI
                 if (slot.button == null) continue;
                 int lightId = slot.lightId;
                 slot.button.onClick.RemoveAllListeners();
-                slot.button.onClick.AddListener(() => WallpadManager.Instance.ToggleLight(lightId));
+                slot.button.onClick.AddListener(() => WallpadManager.Instance?.ToggleLight(lightId));
             }
         }
 

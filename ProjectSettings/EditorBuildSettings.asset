@@ -6,11 +6,11 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/KocomHexTest.unity
-    guid: ccf853ef26b7841a8b184638f91bc7e4
-  - enabled: 1
     path: Assets/Scenes/WallpadMain.unity
     guid: b1c4e720ab356a0642a771bea13969a1
+  - enabled: 1
+    path: Assets/Scenes/KocomHexTest.unity
+    guid: ccf853ef26b7841a8b184638f91bc7e4
   m_configObjects:
     com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
