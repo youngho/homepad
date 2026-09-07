@@ -29,11 +29,11 @@ namespace Homepad.Core
         [SerializeField] private bool autoConnect = true;
 
         [Header("TCP")]
-        [SerializeField] private string arduinoIp = "192.168.0.100";
+        [SerializeField] private string arduinoIp = "192.168.0.85";
         [SerializeField] private int arduinoPort = 8080;
 
         [Header("MQTT")]
-        [SerializeField] private string mqttHost = "192.168.0.100";
+        [SerializeField] private string mqttHost = "192.168.0.85";
         [SerializeField] private int mqttPort = 1883;
         [SerializeField] private string mqttClientId = "homepad";
         [SerializeField] private string mqttUser = "";

@@ -286,9 +286,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Homepad.Core:Homepad.Core:ArduinoConnector
   linkMode: 0
   autoConnect: 1
-  arduinoIp: 192.168.0.100
+  arduinoIp: 192.168.0.85
   arduinoPort: 8080
-  mqttHost: 192.168.0.100
+  mqttHost: 192.168.0.85
   mqttPort: 1883
   mqttClientId: homepad
   mqttUser: 
@@ -582,8 +582,8 @@ RectTransform:
   - {fileID: 1954277056}
   - {fileID: 818385579}
   - {fileID: 939142011}
-  - {fileID: 675862397}
   - {fileID: 1265041615}
+  - {fileID: 675862397}
   m_Father: {fileID: 300001}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -2041,7 +2041,7 @@ MonoBehaviour:
   m_CaretColor: {r: 0.19607843, g: 0.19607843, b: 0.19607843, a: 1}
   m_CustomCaretColor: 0
   m_SelectionColor: {r: 0.65882355, g: 0.80784315, b: 1, a: 0.7529412}
-  m_Text: 192.168.0.100
+  m_Text: 192.168.0.85
   m_CaretBlinkRate: 0.85
   m_CaretWidth: 1
   m_ReadOnly: 0
@@ -4089,7 +4089,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: 192.168.0.100
+  m_Text: 192.168.0.85
 --- !u!222 &574504631
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -8583,11 +8583,11 @@ RectTransform:
   - {fileID: 1804551137}
   m_Father: {fileID: 1265041615}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.03, y: 0.03}
-  m_AnchorMax: {x: 0.97, y: 0.14}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 24, y: -172}
+  m_SizeDelta: {x: 280, y: 40}
+  m_Pivot: {x: 0, y: 1}
 --- !u!114 &1234655768
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -8758,10 +8758,10 @@ RectTransform:
   - {fileID: 1550266501}
   m_Father: {fileID: 400001}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.04, y: 0.3}
-  m_AnchorMax: {x: 0.96, y: 0.94}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: -44}
+  m_SizeDelta: {x: -32, y: -128}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1265041617
 MonoBehaviour:
@@ -11219,11 +11219,11 @@ RectTransform:
   - {fileID: 620710570}
   m_Father: {fileID: 1265041615}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.03, y: 0.22}
-  m_AnchorMax: {x: 0.97, y: 0.4}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: -220}
+  m_SizeDelta: {x: -40, y: 72}
+  m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &1550266502
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -14021,11 +14021,11 @@ RectTransform:
   - {fileID: 42519489}
   m_Father: {fileID: 1265041615}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.03, y: 0.42}
-  m_AnchorMax: {x: 0.97, y: 0.88}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 0, y: 0}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: -76}
+  m_SizeDelta: {x: -40, y: 88}
+  m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &1910399719
 MonoBehaviour:
   m_ObjectHideFlags: 0

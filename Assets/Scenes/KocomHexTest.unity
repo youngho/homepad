@@ -8268,9 +8268,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Homepad.Core:Homepad.Core:ArduinoConnector
   linkMode: 1
   autoConnect: 0
-  arduinoIp: 192.168.0.100
+  arduinoIp: 192.168.0.85
   arduinoPort: 8080
-  mqttHost: 192.168.0.100
+  mqttHost: 192.168.0.85
   mqttPort: 1883
   mqttClientId: homepad
   mqttUser: 

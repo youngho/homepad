@@ -1363,18 +1363,18 @@ namespace Homepad.UI
                 int port = PlayerPrefs.GetInt("Homepad.MqttPort", 1883);
                 if (string.IsNullOrEmpty(host) || LooksLikeSerialPort(host))
                 {
-                    host = PlayerPrefs.GetString("Homepad.TcpHost", "192.168.0.100");
+                    host = PlayerPrefs.GetString("Homepad.TcpHost", "192.168.0.85");
                 }
 
-                if (string.IsNullOrEmpty(host) || LooksLikeSerialPort(host)) host = "192.168.0.100";
+                if (string.IsNullOrEmpty(host) || LooksLikeSerialPort(host)) host = "192.168.0.85";
                 portField.text = host;
                 if (baudField != null) baudField.text = port > 0 ? port.ToString() : "1883";
             }
             else
             {
-                string host = PlayerPrefs.GetString("Homepad.TcpHost", "192.168.0.100");
+                string host = PlayerPrefs.GetString("Homepad.TcpHost", "192.168.0.85");
                 int port = PlayerPrefs.GetInt("Homepad.TcpPort", DefaultTcpPort());
-                if (LooksLikeSerialPort(host)) host = "192.168.0.100";
+                if (LooksLikeSerialPort(host)) host = "192.168.0.85";
                 if (port == 115200 || port <= 0) port = DefaultTcpPort();
                 portField.text = host;
                 if (baudField != null) baudField.text = port.ToString();

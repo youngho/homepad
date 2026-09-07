@@ -110,14 +110,16 @@ namespace Homepad.Editor
                 EditorSceneManager.SetActiveScene(SceneManager.GetSceneByName("WallpadMain"));
             }
 
-            SetAnchors((RectTransform)linkBar, 0.03f, 0.42f, 0.97f, 0.88f);
-            SetAnchors((RectTransform)mqttBar, 0.03f, 0.22f, 0.97f, 0.40f);
+            PinTop((RectTransform)linkBar, 20f, 20f, 76f, 88f);
+            PinTop((RectTransform)mqttBar, 20f, 20f, 220f, 72f);
 
             var settingsRt = (RectTransform)settings;
-            settingsRt.anchorMin = new Vector2(0.04f, 0.18f);
-            settingsRt.anchorMax = new Vector2(0.96f, 0.94f);
-            settingsRt.offsetMin = Vector2.zero;
-            settingsRt.offsetMax = Vector2.zero;
+            settingsRt.anchorMin = Vector2.zero;
+            settingsRt.anchorMax = Vector2.one;
+            settingsRt.pivot = new Vector2(0.5f, 0.5f);
+            settingsRt.offsetMin = new Vector2(16f, 20f);
+            settingsRt.offsetMax = new Vector2(-16f, -108f);
+            settingsRt.localScale = Vector3.one;
 
             SetText(settings.Find("Title"), "연결 설정", SemiBold, 28);
             HideNamed(settings, "IpLabel");
@@ -131,8 +133,13 @@ namespace Homepad.Editor
             if (showLog != null)
             {
                 showLog.name = "ShowLog";
-                SetAnchors((RectTransform)showLog, 0.03f, 0.03f, 0.97f, 0.14f);
                 SetText(showLog.Find("Label"), "로그보기", Regular, 20);
+                var showLogRt = (RectTransform)showLog;
+                showLogRt.anchorMin = new Vector2(0f, 1f);
+                showLogRt.anchorMax = new Vector2(0f, 1f);
+                showLogRt.pivot = new Vector2(0f, 1f);
+                showLogRt.anchoredPosition = new Vector2(24f, -172f);
+                showLogRt.sizeDelta = new Vector2(280f, 40f);
                 var toggle = showLog.GetComponent<Toggle>();
                 if (toggle != null) toggle.isOn = false;
             }
@@ -192,8 +199,8 @@ namespace Homepad.Editor
             }
 
             hexLog.gameObject.SetActive(false);
-            hexLog.SetAsLastSibling();
             settings.SetAsLastSibling();
+            hexLog.SetAsLastSibling();
 
             if (settingsBtn == null)
             {
@@ -248,6 +255,17 @@ namespace Homepad.Editor
             }
 
             f.SetValue(target, value);
+        }
+
+        private static void PinTop(RectTransform rt, float left, float right, float top, float height)
+        {
+            if (rt == null) return;
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.offsetMin = new Vector2(left, -top - height);
+            rt.offsetMax = new Vector2(-right, -top);
+            rt.localScale = Vector3.one;
         }
 
         private static void SetAnchors(RectTransform rt, float xMin, float yMin, float xMax, float yMax)
