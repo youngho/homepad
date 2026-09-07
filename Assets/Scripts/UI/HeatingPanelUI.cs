@@ -68,13 +68,13 @@ namespace Homepad.UI
                 if (slot.nameText != null) slot.nameText.text = room.roomName;
                 if (slot.currentTempText != null) slot.currentTempText.text = $"현재 {room.currentTemp:F1}℃";
                 if (slot.targetTempText != null) slot.targetTempText.text = $"{room.targetTemp:F1}℃";
-                if (slot.powerText != null) slot.powerText.text = room.isPowered ? "난방 켬" : "난방 끔";
+                if (slot.powerText != null) slot.powerText.text = "난방";
                 if (slot.awayText != null) slot.awayText.text = room.isAwayMode ? "외출 중" : "일반";
 
                 if (slot.powerButton != null)
                 {
                     var image = slot.powerButton.GetComponent<Image>();
-                    if (image != null) image.color = room.isPowered ? new Color(0.337f, 0.588f, 0.408f) : new Color(0.10f, 0.12f, 0.16f);
+                    if (image != null) image.color = room.isPowered ? new Color(0.82f, 0.40f, 0.22f) : new Color(0.10f, 0.12f, 0.16f);
                 }
 
                 if (slot.awayButton != null)
