@@ -43,6 +43,15 @@ namespace Homepad.Core
         public const ushort CommandDoorStatus = 0x0001;
         public const ushort CommandDoorUnlock = 0x0002;
 
+        public const byte VentCmdOff = 0x00;
+        public const byte VentCmdOn = 0x11;
+        public const byte VentCmdSpeed = 0x88;
+        public const byte VentMarker = 0xA0;
+        public const byte VentFanOff = 0xFC;
+        public const byte VentFanLow = 0x40;
+        public const byte VentFanMid = 0x80;
+        public const byte VentFanHigh = 0xC0;
+
         public struct Frame
         {
             public ushort type;
@@ -206,9 +215,80 @@ namespace Homepad.Core
             return BuildRequest(DeviceGas, 0x0001, CommandControl, new byte[8]);
         }
 
-        public static byte[] CreateVentilationPacket(VentilationSpeed speed)
+        public static byte[] CreateVentilationPacket(VentilationSpeed speed, bool fromOff = false)
         {
-            return BuildRequest(DeviceVentilation, 0x0001, CommandControl, new byte[] { (byte)speed, 0, 0, 0, 0, 0, 0, 0 });
+            byte[] value = new byte[8];
+            value[1] = VentMarker;
+            if (speed == VentilationSpeed.Off)
+            {
+                value[0] = VentCmdOff;
+                value[2] = VentFanOff;
+            }
+            else if (fromOff && speed == VentilationSpeed.Low)
+            {
+                value[0] = VentCmdOn;
+                value[2] = VentFanLow;
+            }
+            else
+            {
+                value[0] = VentCmdSpeed;
+                value[2] = FanByte(speed);
+            }
+
+            return BuildRequest(DeviceVentilation, 0x0001, CommandControl, value);
+        }
+
+        public static bool TryParseVentilation(Frame frame, out bool powered, out VentilationSpeed speed)
+        {
+            powered = false;
+            speed = VentilationSpeed.Off;
+            if (frame.value == null || frame.value.Length == 0) return false;
+
+            byte v0 = frame.value[0];
+            byte v2 = frame.value.Length > 2 ? frame.value[2] : (byte)0;
+            if (v0 == VentCmdOff)
+            {
+                powered = false;
+                speed = VentilationSpeed.Off;
+                return true;
+            }
+
+            if (v0 == VentCmdOn || v0 == VentCmdSpeed)
+            {
+                powered = true;
+                speed = FanSpeed(v2);
+                return true;
+            }
+
+            if (v0 <= 3)
+            {
+                speed = (VentilationSpeed)v0;
+                powered = speed != VentilationSpeed.Off;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static byte FanByte(VentilationSpeed speed)
+        {
+            return speed switch
+            {
+                VentilationSpeed.Medium => VentFanMid,
+                VentilationSpeed.High => VentFanHigh,
+                _ => VentFanLow
+            };
+        }
+
+        private static VentilationSpeed FanSpeed(byte fan)
+        {
+            return fan switch
+            {
+                VentFanMid => VentilationSpeed.Medium,
+                VentFanHigh => VentilationSpeed.High,
+                VentFanOff => VentilationSpeed.Off,
+                _ => VentilationSpeed.Low
+            };
         }
 
         public static byte[] CreateElevatorCallPacket()

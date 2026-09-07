@@ -236,9 +236,10 @@ namespace Homepad.Core
 
         public void SetVentilationSpeed(VentilationSpeed speed)
         {
+            bool fromOff = !ventilation.isPowered || ventilation.speed == VentilationSpeed.Off;
             ventilation.speed = speed;
             ventilation.isPowered = speed != VentilationSpeed.Off;
-            connector?.SendPacket(KocomProtocol.CreateVentilationPacket(speed));
+            connector?.SendPacket(KocomProtocol.CreateVentilationPacket(speed, fromOff));
             OnVentilationChanged?.Invoke(ventilation);
             RaiseStateChanged();
         }
@@ -486,11 +487,13 @@ namespace Homepad.Core
                     RaiseStateChanged();
                     break;
                 case KocomProtocol.DeviceVentilation:
-                    var speed = (VentilationSpeed)Mathf.Clamp(frame.value[0], 0, 3);
-                    ventilation.speed = speed;
-                    ventilation.isPowered = speed != VentilationSpeed.Off;
-                    OnVentilationChanged?.Invoke(ventilation);
-                    RaiseStateChanged();
+                    if (KocomProtocol.TryParseVentilation(frame, out bool ventOn, out var speed))
+                    {
+                        ventilation.speed = speed;
+                        ventilation.isPowered = ventOn && speed != VentilationSpeed.Off;
+                        OnVentilationChanged?.Invoke(ventilation);
+                        RaiseStateChanged();
+                    }
                     break;
                 case KocomProtocol.DeviceElevator:
                     ApplyElevatorFrame(frame);
