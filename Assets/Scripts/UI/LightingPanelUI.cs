@@ -101,6 +101,7 @@ namespace Homepad.UI
             focusedRoomCode = roomCode;
             if (titleText != null) titleText.text = string.IsNullOrEmpty(roomName) ? "조명" : $"{roomName} 조명";
 
+            HomeController.Instance?.Service?.EnsureBoundDevices();
             var roomLights = CollectRoomLights(roomCode);
             RebuildSlots(roomLights);
             BindClicks();

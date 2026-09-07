@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Text;
 using Homepad.Core;
+using Homepad.Home;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -466,7 +467,11 @@ namespace Homepad.UI
         private void BindEvents()
         {
             // Serial Controls
-            Bind(wallpadButton, () => SceneManager.LoadScene("WallpadMain"));
+            Bind(wallpadButton, () =>
+            {
+                HomeController.Instance?.Save();
+                SceneManager.LoadScene("WallpadMain");
+            });
             Bind(prevPortButton, () => CyclePort(-1));
             Bind(nextPortButton, () => CyclePort(1));
             Bind(refreshButton, () => RefreshPorts(false));

@@ -66,8 +66,8 @@ namespace Homepad.Core
         {
             if (Instance != null && Instance != this)
             {
-                Destroy(gameObject);
-                return;
+                // 이전 씬에서 남아 있는 매니저면 버리고, 지금 씬의 월패드를 쓴다.
+                Destroy(Instance.gameObject);
             }
 
             Instance = this;

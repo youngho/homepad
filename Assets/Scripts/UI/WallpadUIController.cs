@@ -116,6 +116,7 @@ namespace Homepad.UI
 
         private void OpenHexTest()
         {
+            HomeController.Instance?.Save();
             SceneManager.LoadScene("KocomHexTest");
         }
 

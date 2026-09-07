@@ -13,10 +13,11 @@ namespace Homepad.Core
         {
             if (instance != null) return instance;
 
-            var existing = FindFirstObjectByType<UnityMainThreadDispatcher>();
+            var existing = FindStandalone();
             if (existing != null)
             {
                 instance = existing;
+                DontDestroyOnLoad(existing.gameObject);
                 return instance;
             }
 
@@ -26,17 +27,38 @@ namespace Homepad.Core
             return instance;
         }
 
+        private static UnityMainThreadDispatcher FindStandalone()
+        {
+            var all = FindObjectsByType<UnityMainThreadDispatcher>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            for (int i = 0; i < all.Length; i++)
+            {
+                if (all[i] != null && all[i].GetComponent<WallpadManager>() == null)
+                {
+                    return all[i];
+                }
+            }
+
+            return null;
+        }
+
         private void Awake()
         {
-            if (instance == null)
+            // WallpadSystem 위에 붙어 있으면 월패드 전체를 씬에 붙잡아 조명 패널이 비게 된다.
+            if (GetComponent<WallpadManager>() != null)
             {
-                instance = this;
-                DontDestroyOnLoad(gameObject);
+                if (instance == this) instance = null;
+                EnsureExists();
+                return;
             }
-            else if (instance != this)
+
+            if (instance != null && instance != this)
             {
                 Destroy(gameObject);
+                return;
             }
+
+            instance = this;
+            DontDestroyOnLoad(gameObject);
         }
 
         private void OnDestroy()
