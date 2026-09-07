@@ -427,7 +427,7 @@ namespace Homepad.Core
 
         private void ApplyFrame(KocomProtocol.Frame frame)
         {
-            if (KocomProtocol.IsQuery(frame)) return;
+            if (!KocomProtocol.ShouldApplyState(frame)) return;
 
             ushort device = frame.DeviceAddress;
             ushort room = KocomProtocol.ResolveRoom(frame);

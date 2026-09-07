@@ -20,6 +20,8 @@ namespace Homepad.Core
 
         public const ushort TypeTransmit = 0x30BC;
         public const ushort TypeReport = 0x30DC;
+        public const ushort TypeRetransmit1 = 0x30BD;
+        public const ushort TypeRetransmit2 = 0x30BE;
         public const ushort AddressWallpad = 0x0001;
         public const ushort DeviceLight = 0x000E;
         public const ushort DeviceHeating = 0x0036;
@@ -103,9 +105,31 @@ namespace Homepad.Core
             return BuildRequest(device, room, CommandQuery, new byte[8]);
         }
 
+        public static bool IsRequestType(ushort type)
+        {
+            return type == TypeTransmit || type == TypeRetransmit1 || type == TypeRetransmit2;
+        }
+
+        // 바이트 8–9. 필드명은 room이지만 버스에선 명령(00 00 제어, 00 3A 조회).
+        public static ushort CommandOf(Frame frame)
+        {
+            return frame.room;
+        }
+
+        // TYPE × CMD.
+        // 30 DC + (00 3A 조회 에코 | 00 00 제어 보고 | 그 외 STA 명령) → VALUE를 메모리에 넣는다.
+        // 30 BC/BD/BE + 00 3A → 조회 요청이므로 넣지 않는다.
+        public static bool ShouldApplyState(Frame frame)
+        {
+            ushort cmd = CommandOf(frame);
+            if (frame.type == TypeReport) return true;
+            if (IsRequestType(frame.type) && cmd == CommandQuery) return false;
+            return false;
+        }
+
         public static bool IsQuery(Frame frame)
         {
-            return frame.room == CommandQuery;
+            return IsRequestType(frame.type) && CommandOf(frame) == CommandQuery;
         }
 
         public static bool IsKnownRoom(ushort address)
@@ -351,8 +375,8 @@ namespace Homepad.Core
             {
                 TypeTransmit => "요청",
                 TypeReport => "상태",
-                0x30BD => "재전송1",
-                0x30BE => "재전송2",
+                TypeRetransmit1 => "재전송1",
+                TypeRetransmit2 => "재전송2",
                 _ => string.Empty
             };
         }
@@ -408,8 +432,8 @@ namespace Homepad.Core
             {
                 TypeTransmit => "요청(REQ)",
                 TypeReport => "상태(STA)",
-                0x30BD => "재전송1(30BD)",
-                0x30BE => "재전송2(30BE)",
+                TypeRetransmit1 => "재전송1(30BD)",
+                TypeRetransmit2 => "재전송2(30BE)",
                 _ => $"타입(0x{frame.type:X4})"
             };
 
