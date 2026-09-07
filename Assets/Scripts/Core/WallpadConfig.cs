@@ -12,7 +12,7 @@ namespace Homepad.Core
         public int householdFloor = 28;
 
         [Header("Arduino")]
-        public string arduinoIp = "192.168.0.100";
+        public string arduinoIp = "192.168.0.85";
         public int arduinoPort = 8080;
 
         [Header("Devices")]
