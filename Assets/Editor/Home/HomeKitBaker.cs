@@ -137,6 +137,69 @@ namespace Homepad.Editor
             return SavePrefab(root, Root + "/Prefabs/WallGasValve.prefab");
         }
 
+        public static GameObject BakeDoorLock()
+        {
+            EnsureFolder("Assets/Home");
+            EnsureFolder(Root);
+            EnsureFolder(Root + "/Materials");
+            EnsureFolder(Root + "/Prefabs");
+
+            var trim = AssetDatabase.LoadAssetAtPath<Material>(Root + "/Materials/Trim.mat");
+            var metal = AssetDatabase.LoadAssetAtPath<Material>(Root + "/Materials/LampMetal.mat");
+            var body = AssetDatabase.LoadAssetAtPath<Material>(Root + "/Materials/HeaterBody.mat");
+            if (trim == null) trim = Lit(Root + "/Materials/Trim.mat", new Color(0.36f, 0.24f, 0.16f), 0.32f);
+            if (metal == null) metal = Lit(Root + "/Materials/LampMetal.mat", new Color(0.72f, 0.7f, 0.66f), 0.7f);
+            if (body == null) body = Lit(Root + "/Materials/HeaterBody.mat", new Color(0.4f, 0.38f, 0.36f), 0.45f);
+
+            var doorMat = AssetDatabase.LoadAssetAtPath<Material>(Root + "/Materials/DoorLeaf.mat");
+            if (doorMat == null) doorMat = Lit(Root + "/Materials/DoorLeaf.mat", new Color(0.28f, 0.18f, 0.12f), 0.38f);
+
+            var ledMat = AssetDatabase.LoadAssetAtPath<Material>(Root + "/Materials/DoorLockLed.mat");
+            if (ledMat == null) ledMat = Emissive(Root + "/Materials/DoorLockLed.mat", new Color(0.72f, 0.18f, 0.16f), new Color(1.8f, 0.18f, 0.12f));
+
+            var prefab = BuildDoorLock(trim, doorMat, body, metal, ledMat);
+            var builder = Object.FindFirstObjectByType<IsometricHomeBuilder>();
+            if (builder != null)
+            {
+                var so = new SerializedObject(builder);
+                so.FindProperty("wallDoorLockPrefab").objectReferenceValue = prefab;
+                so.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(builder);
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            return prefab;
+        }
+
+        static GameObject BuildDoorLock(Material frameMat, Material leafMat, Material plateMat, Material metal, Material ledMat)
+        {
+            var root = new GameObject("WallDoorLock");
+            Box("FrameTop", root.transform, new Vector3(0f, 0.94f, 0f), new Vector3(1.08f, 0.06f, 0.07f), frameMat);
+            Box("FrameBottom", root.transform, new Vector3(0f, -0.94f, 0f), new Vector3(1.08f, 0.06f, 0.07f), frameMat);
+            Box("FrameRight", root.transform, new Vector3(0.51f, 0f, 0f), new Vector3(0.06f, 1.88f, 0.07f), frameMat);
+            Box("FrameLeft", root.transform, new Vector3(-0.51f, 0f, 0f), new Vector3(0.06f, 1.88f, 0.07f), frameMat);
+
+            var hinge = new GameObject("DoorHinge");
+            hinge.transform.SetParent(root.transform, false);
+            hinge.transform.localPosition = new Vector3(-0.45f, 0f, 0f);
+
+            var leaf = Box("DoorLeaf", hinge.transform, new Vector3(0.45f, 0f, 0f), new Vector3(0.90f, 1.82f, 0.04f), leafMat);
+            Box("Handle", leaf.transform, new Vector3(0.32f, 0f, -0.04f), new Vector3(0.04f, 0.14f, 0.05f), metal);
+
+            var plate = Box("LockPlate", root.transform, new Vector3(0.42f, 0.08f, -0.06f), new Vector3(0.12f, 0.28f, 0.04f), plateMat);
+            Box("Keypad", plate.transform, new Vector3(0f, 0.02f, -0.015f), new Vector3(0.7f, 0.55f, 0.4f), metal);
+            var ledGo = Box("Led", plate.transform, new Vector3(0f, 0.32f, -0.02f), new Vector3(0.35f, 0.12f, 0.3f), ledMat);
+
+            var visual = root.AddComponent<DoorLockVisual>();
+            var so = new SerializedObject(visual);
+            so.FindProperty("doorLeaf").objectReferenceValue = hinge.transform;
+            so.FindProperty("led").objectReferenceValue = ledGo.GetComponent<MeshRenderer>();
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            return SavePrefab(root, Root + "/Prefabs/WallDoorLock.prefab");
+        }
+
         public static void BakeGasValve()
         {
             EnsureFolder("Assets/Home");

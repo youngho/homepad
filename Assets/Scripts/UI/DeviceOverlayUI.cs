@@ -13,6 +13,7 @@ namespace Homepad.UI
         [SerializeField] private GameObject gasRoot;
         [SerializeField] private GameObject ventRoot;
         [SerializeField] private GameObject elevatorRoot;
+        [SerializeField] private GameObject doorLockRoot;
         [SerializeField] private GameObject curtainRoot;
         [SerializeField] private LightingPanelUI lighting;
         [SerializeField] private HeatingPanelUI heating;
@@ -61,6 +62,9 @@ namespace Homepad.UI
                 case HomeItemKind.Elevator:
                     ShowRoot(elevatorRoot);
                     break;
+                case HomeItemKind.DoorLock:
+                    ShowRoot(doorLockRoot);
+                    break;
                 case HomeItemKind.ElectricCurtain:
                     ShowRoot(curtainRoot);
                     curtain?.Focus(item.InstanceId);
@@ -87,6 +91,7 @@ namespace Homepad.UI
             Set(gasRoot, root == gasRoot);
             Set(ventRoot, root == ventRoot);
             Set(elevatorRoot, root == elevatorRoot);
+            Set(doorLockRoot, root == doorLockRoot);
             Set(curtainRoot, root == curtainRoot);
         }
 

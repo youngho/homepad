@@ -429,6 +429,12 @@ namespace Homepad.UI
                 {
                     continue;
                 }
+                if (room.Hint == RoomHint.Entrance &&
+                    (kind == HomeItemKind.Heating || kind == HomeItemKind.ElectricCurtain ||
+                     kind == HomeItemKind.AirConditioner || kind == HomeItemKind.Vent))
+                {
+                    continue;
+                }
                 var def = HomeItemDef.Create(kind, room.Hint, room.Name);
                 if (layout != null && layout.IsCatalogBlocked(def)) continue;
                 list.Add(kind);
@@ -442,6 +448,8 @@ namespace Homepad.UI
 
             if (room.Hint == RoomHint.Entrance)
             {
+                var door = HomeItemDef.Create(HomeItemKind.DoorLock, room.Hint, room.Name);
+                if (layout == null || !layout.IsCatalogBlocked(door)) list.Insert(0, HomeItemKind.DoorLock);
                 var elevator = HomeItemDef.Create(HomeItemKind.Elevator, room.Hint, room.Name);
                 if (layout == null || !layout.IsCatalogBlocked(elevator)) list.Add(HomeItemKind.Elevator);
             }

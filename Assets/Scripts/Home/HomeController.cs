@@ -594,6 +594,8 @@ namespace Homepad.Home
                     return layout.WallCenter(item.Cell, item.WallDir, 1.18f);
                 case HomeItemKind.Gas:
                     return layout.WallCenter(item.Cell, item.WallDir, 1.12f);
+                case HomeItemKind.DoorLock:
+                    return layout.WallCenter(item.Cell, item.WallDir, 0.98f);
                 case HomeItemKind.ElectricCurtain:
                     return layout.WallCenter(item.Cell, item.WallDir, 1.05f);
                 default:
@@ -617,6 +619,7 @@ namespace Homepad.Home
                             SwapLivingHeatAndVentIfNeeded();
                             EnsureLivingVent();
                             EnsureKitchen();
+                            EnsureEntrance();
                             EnsureRoomHeaters();
                             return;
                         }
@@ -632,7 +635,7 @@ namespace Homepad.Home
         }
 
         // 임시 테스트 세대. 나중에 집 설정 화면이 생기면 이 기본값만 빼면 된다.
-        // 배치: 방1 / 거실 | 주방 | 방3 | 방2
+        // 배치: 방1 + 현관 / 거실 | 주방 | 방3 | 방2
         private void SeedCheotmaeulDemo()
         {
             int step = HomeLayout.RoomSize;
@@ -648,6 +651,7 @@ namespace Homepad.Home
             PlaceDemoLights(room3);
             EnsureLivingVent();
             EnsureKitchen();
+            EnsureEntrance();
             EnsureRoomHeaters();
 
             SelectRoom(living);
@@ -690,6 +694,79 @@ namespace Homepad.Home
             if (added) Save();
         }
 
+        private void EnsureEntrance()
+        {
+            bool added = false;
+            var entrance = layout.FindRoom(RoomHint.Entrance);
+            if (entrance == null)
+            {
+                var room1 = layout.FindRoom(RoomHint.Master);
+                Vector2Int origin;
+                Vector2Int size = new Vector2Int(2, 4);
+                if (room1 != null)
+                {
+                    origin = new Vector2Int(room1.Origin.x + room1.Size.x, room1.Origin.y);
+                    size = new Vector2Int(2, Mathf.Max(2, room1.Size.y));
+                }
+                else
+                {
+                    origin = new Vector2Int(HomeLayout.RoomSize, HomeLayout.RoomSize);
+                }
+
+                if (RectOccupied(origin, size))
+                {
+                    origin = FindFreeOrigin(size);
+                }
+
+                if (!RectOccupied(origin, size))
+                {
+                    entrance = service.CreateRoom(RoomHint.Entrance, origin, size, "현관");
+                    added = entrance != null;
+                }
+            }
+
+            if (entrance != null && !layout.HasSingleton(HomeItemKind.DoorLock, RoomHint.Entrance))
+            {
+                var def = HomeItemDef.Create(HomeItemKind.DoorLock, entrance.Hint, entrance.Name);
+                var cell = service.DefaultCell(def, entrance);
+                int wallDir = service.DefaultWallDir(def, entrance, cell);
+                if (service.PlaceIntoRoom(def, entrance, cell, wallDir) != null)
+                {
+                    added = true;
+                }
+            }
+
+            if (added) Save();
+        }
+
+        private bool RectOccupied(Vector2Int origin, Vector2Int size)
+        {
+            for (int x = 0; x < size.x; x++)
+            {
+                for (int y = 0; y < size.y; y++)
+                {
+                    var cell = layout.GetCell(origin + new Vector2Int(x, y));
+                    if (cell != null && cell.HasFloor) return true;
+                }
+            }
+
+            return false;
+        }
+
+        private Vector2Int FindFreeOrigin(Vector2Int size)
+        {
+            for (int x = -8; x < 16; x++)
+            {
+                for (int y = -8; y < 16; y++)
+                {
+                    var origin = new Vector2Int(x, y);
+                    if (!RectOccupied(origin, size)) return origin;
+                }
+            }
+
+            return Vector2Int.zero;
+        }
+
         private void EnsureLivingVent()
         {
             if (layout.HasSingleton(HomeItemKind.Vent, RoomHint.Living)) return;
@@ -712,7 +789,7 @@ namespace Homepad.Home
             for (int i = 0; i < layout.Rooms.Count; i++)
             {
                 var room = layout.Rooms[i];
-                if (room == null || room.Hint == RoomHint.Kitchen || layout.HasHeatingInHint(room.Hint)) continue;
+                if (room == null || room.Hint == RoomHint.Kitchen || room.Hint == RoomHint.Entrance || layout.HasHeatingInHint(room.Hint)) continue;
 
                 var def = HomeItemDef.Create(HomeItemKind.Heating, room.Hint, room.Name);
                 var cell = service.DefaultCell(def, room);

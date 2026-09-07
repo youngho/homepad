@@ -16,6 +16,7 @@ namespace Homepad.Home
             public MeshRenderer lampRenderer;
             public RoomLightRig lightRig;
             public ProceduralCurtain3D curtain3D;
+            public DoorLockVisual doorLock;
             public Transform ceilingAnchor;
             public Transform wallAnchor;
             public Transform floorAnchor;
@@ -92,6 +93,12 @@ namespace Homepad.Home
             if (f.curtain3D != null) f.curtain3D.SetOpen(open);
         }
 
+        public void SetDoorLock(RoomHint hint, bool open)
+        {
+            if (!fixtureMap.TryGetValue(hint, out var f)) return;
+            if (f.doorLock != null) f.doorLock.SetOpen(open);
+        }
+
         public Transform GetAnchor(HomeItemKind kind, RoomHint hint)
         {
             if (fixtureMap.TryGetValue(hint, out var f))
@@ -104,6 +111,7 @@ namespace Homepad.Home
                     case HomeItemKind.Gas:
                     case HomeItemKind.Vent:
                     case HomeItemKind.Elevator:
+                    case HomeItemKind.DoorLock:
                         return f.wallAnchor ?? f.floorAnchor ?? transform;
                     case HomeItemKind.ElectricCurtain:
                         return f.wallAnchor ?? transform;
@@ -123,6 +131,7 @@ namespace Homepad.Home
             if (src.lightRig != null) dest.lightRig = src.lightRig;
             if (src.heaterGlow != null) dest.heaterGlow = src.heaterGlow;
             if (src.curtain3D != null) dest.curtain3D = src.curtain3D;
+            if (src.doorLock != null) dest.doorLock = src.doorLock;
             if (src.ceilingAnchor != null) dest.ceilingAnchor = src.ceilingAnchor;
             if (src.wallAnchor != null) dest.wallAnchor = src.wallAnchor;
             if (src.floorAnchor != null) dest.floorAnchor = src.floorAnchor;

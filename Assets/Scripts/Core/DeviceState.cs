@@ -97,4 +97,17 @@ namespace Homepad.Core
             direction = ElevatorDirection.Stop;
         }
     }
+
+    [Serializable]
+    public class DoorLockState
+    {
+        public bool isUnlocking;
+        public bool isOpen;
+
+        public DoorLockState()
+        {
+            isUnlocking = false;
+            isOpen = false;
+        }
+    }
 }

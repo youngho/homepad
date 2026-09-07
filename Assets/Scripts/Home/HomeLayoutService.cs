@@ -37,12 +37,19 @@ namespace Homepad.Home
 
         public RoomRecord CreateRoom(RoomHint hint, Vector2Int origin, string customName = null)
         {
+            return CreateRoom(hint, origin, new Vector2Int(HomeLayout.RoomSize, HomeLayout.RoomSize), customName);
+        }
+
+        public RoomRecord CreateRoom(RoomHint hint, Vector2Int origin, Vector2Int size, string customName = null)
+        {
+            if (size.x < 1) size.x = 1;
+            if (size.y < 1) size.y = 1;
             var room = new RoomRecord
             {
                 Id = layout.NextRoomId(),
                 Hint = hint,
                 Origin = origin,
-                Size = new Vector2Int(HomeLayout.RoomSize, HomeLayout.RoomSize),
+                Size = size,
                 Name = !string.IsNullOrEmpty(customName) ? customName : HomeItemDef.RoomName(hint)
             };
             layout.Rooms.Add(room);
@@ -307,6 +314,11 @@ namespace Homepad.Home
                 return layout.EdgeCell(room, view.PrimaryFront);
             }
 
+            if (def.Kind == HomeItemKind.DoorLock)
+            {
+                return layout.EdgeCell(room, (int)WallDir.East);
+            }
+
             return new Vector2Int(cx, cy);
         }
 
@@ -318,6 +330,13 @@ namespace Homepad.Home
                 int dir = view.PrimaryBack;
                 TryPickExteriorWall(cell, ref dir, room);
                 return dir;
+            }
+
+            if (def.Kind == HomeItemKind.DoorLock)
+            {
+                int dir = (int)WallDir.East;
+                if (TryPickExteriorWall(cell, ref dir, room)) return dir;
+                return ClampWallDir(cell, dir, room);
             }
 
             if (def.Surface != Surface.Wall) return 0;

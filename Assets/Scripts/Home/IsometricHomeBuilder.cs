@@ -18,6 +18,7 @@ namespace Homepad.Home
         [SerializeField] private GameObject wallHeaterPrefab;
         [SerializeField] private GameObject wallVentPrefab;
         [SerializeField] private GameObject wallGasValvePrefab;
+        [SerializeField] private GameObject wallDoorLockPrefab;
         [SerializeField] private Material opaqueLitTemplate;
         [SerializeField] private Material transparentLitTemplate;
         [SerializeField] private Material emissiveLitTemplate;
@@ -141,6 +142,11 @@ namespace Homepad.Home
                 {
                     dioramaRig.SetCurtain(item.RoomHint, item.CurtainOpen);
                 }
+                else if (item.Kind == HomeItemKind.DoorLock)
+                {
+                    var door = manager != null ? manager.DoorLock : null;
+                    dioramaRig.SetDoorLock(item.RoomHint, door != null && door.isOpen);
+                }
             }
         }
 
@@ -258,6 +264,9 @@ namespace Homepad.Home
                 case HomeItemKind.Gas:
                     visual = SpawnGasValve(go.transform, item);
                     break;
+                case HomeItemKind.DoorLock:
+                    visual = SpawnDoorLock(go.transform, item);
+                    break;
                 case HomeItemKind.ElectricCurtain:
                     curtainLeaf = SpawnCurtain(go.transform, item);
                     visual = curtainLeaf;
@@ -276,6 +285,10 @@ namespace Homepad.Home
             else if (item.Kind == HomeItemKind.Vent || item.Kind == HomeItemKind.Heating || item.Kind == HomeItemKind.Gas)
             {
                 box.size = new Vector3(1.1f, 1.2f, 0.7f);
+            }
+            else if (item.Kind == HomeItemKind.DoorLock)
+            {
+                box.size = new Vector3(1.2f, 2.0f, 0.55f);
             }
             else
             {
@@ -387,6 +400,24 @@ namespace Homepad.Home
             return inst.transform;
         }
 
+        private Transform SpawnDoorLock(Transform parent, PlacedItem item)
+        {
+            parent.position = layout.WallCenter(item.Cell, item.WallDir, 0.98f);
+            parent.rotation = Quaternion.LookRotation(-HomeLayout.DirNormal(item.WallDir));
+
+            var inst = SpawnKit(wallDoorLockPrefab, parent, "WallDoorLock");
+            var visual = inst.GetComponentInChildren<DoorLockVisual>(true);
+            if (visual == null) visual = inst.AddComponent<DoorLockVisual>();
+
+            dioramaRig?.RegisterFixture(new DioramaRoomRig.RoomFixture
+            {
+                hint = item.RoomHint,
+                doorLock = visual,
+                wallAnchor = parent
+            });
+            return inst.transform;
+        }
+
         private Transform SpawnCurtain(Transform parent, PlacedItem item)
         {
             parent.position = layout.WallCenter(item.Cell, item.WallDir, 1.05f);
@@ -435,6 +466,8 @@ namespace Homepad.Home
                 wallVentPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/WallVentPanel.prefab");
             if (wallGasValvePrefab == null)
                 wallGasValvePrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/WallGasValve.prefab");
+            if (wallDoorLockPrefab == null)
+                wallDoorLockPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Home/Kit/Prefabs/WallDoorLock.prefab");
             if (opaqueLitTemplate == null)
                 opaqueLitTemplate = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/Home/Kit/Materials/FloorOak.mat");
             if (transparentLitTemplate == null)

@@ -40,6 +40,8 @@ namespace Homepad.Core
         public const byte HeatAway1 = 0x01;
         public const ushort CommandControl = 0x0000;
         public const ushort CommandQuery = 0x003A;
+        public const ushort CommandDoorStatus = 0x0001;
+        public const ushort CommandDoorUnlock = 0x0002;
 
         public struct Frame
         {
@@ -212,6 +214,16 @@ namespace Homepad.Core
         public static byte[] CreateElevatorCallPacket()
         {
             return BuildRequest(DeviceElevator, 0x0001, CommandControl, new byte[8]);
+        }
+
+        public static byte[] CreateDoorUnlockPacket()
+        {
+            return BuildFrame(DeviceDoorLock, CommandDoorUnlock, new byte[8], AddressWallpad, TypeTransmit);
+        }
+
+        public static byte[] CreateDoorLockAckPacket()
+        {
+            return BuildFrame(DeviceDoorLock, CommandDoorStatus, new byte[8], AddressWallpad, TypeReport);
         }
 
         public static bool TryParse(byte[] raw, out Frame frame)

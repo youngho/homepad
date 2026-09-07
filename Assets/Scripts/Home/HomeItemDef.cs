@@ -11,7 +11,8 @@ namespace Homepad.Home
         Vent,
         Elevator,
         ElectricCurtain,
-        AirConditioner
+        AirConditioner,
+        DoorLock
     }
 
     public enum Surface
@@ -134,7 +135,8 @@ namespace Homepad.Home
             [HomeItemKind.AirConditioner] = new DeviceCategoryRule(HomeItemKind.AirConditioner, "에어컨", "❄️", Surface.Ceiling, true, "천장형 시스템 에어컨"),
             [HomeItemKind.Vent] = new DeviceCategoryRule(HomeItemKind.Vent, "환기", "🌀", Surface.Wall, true, "거실 환기 조절 패널"),
             [HomeItemKind.Gas] = new DeviceCategoryRule(HomeItemKind.Gas, "가스 밸브", "🛡️", Surface.Wall, true, "주방 안전 자동 차단 밸브"),
-            [HomeItemKind.Elevator] = new DeviceCategoryRule(HomeItemKind.Elevator, "엘리베이터", "🛗", Surface.Floor, true, "현관 엘리베이터 호출기")
+            [HomeItemKind.Elevator] = new DeviceCategoryRule(HomeItemKind.Elevator, "엘리베이터", "🛗", Surface.Floor, true, "현관 엘리베이터 호출기"),
+            [HomeItemKind.DoorLock] = new DeviceCategoryRule(HomeItemKind.DoorLock, "도어락", "🔐", Surface.Wall, true, "현관 디지털 도어락")
         };
 
         // 2. Predefined Quick Catalog
@@ -151,6 +153,7 @@ namespace Homepad.Home
             new HomeItemDef("gas", HomeItemKind.Gas, Surface.Wall, RoomHint.Kitchen, "가스 밸브", true),
             new HomeItemDef("vent", HomeItemKind.Vent, Surface.Wall, RoomHint.Living, "환기", true),
             new HomeItemDef("elevator", HomeItemKind.Elevator, Surface.Floor, RoomHint.Entrance, "엘리베이터", true),
+            new HomeItemDef("doorlock", HomeItemKind.DoorLock, Surface.Wall, RoomHint.Entrance, "도어락", true),
             new HomeItemDef("curtain", HomeItemKind.ElectricCurtain, Surface.Window, RoomHint.Living, "전동커튼", false)
         };
 

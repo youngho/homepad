@@ -21,6 +21,7 @@ namespace Homepad.Core
         [SerializeField] private GasState gas = new GasState(false);
         [SerializeField] private VentilationState ventilation = new VentilationState();
         [SerializeField] private ElevatorState elevator = new ElevatorState();
+        [SerializeField] private DoorLockState doorLock = new DoorLockState();
         [SerializeField] private bool isAwayMode;
 
         public event Action OnStateChanged;
@@ -29,6 +30,7 @@ namespace Homepad.Core
         public event Action<GasState> OnGasChanged;
         public event Action<VentilationState> OnVentilationChanged;
         public event Action<ElevatorState> OnElevatorChanged;
+        public event Action<DoorLockState> OnDoorLockChanged;
         public event Action<bool> OnAwayModeChanged;
 
         public WallpadConfig Config => config;
@@ -38,10 +40,12 @@ namespace Homepad.Core
         public GasState Gas => gas;
         public VentilationState Ventilation => ventilation;
         public ElevatorState Elevator => elevator;
+        public DoorLockState DoorLock => doorLock;
         public bool IsAwayMode => isAwayMode;
         public int HouseholdFloor => config != null ? config.householdFloor : 12;
 
         private Coroutine elevatorRoutine;
+        private Coroutine doorLockRoutine;
         private Coroutine pollRoutine;
         private readonly Dictionary<ushort, byte[]> lightBitmapByRoom = new Dictionary<ushort, byte[]>();
         private readonly Dictionary<ushort, HeatingState> heatingByRoom = new Dictionary<ushort, HeatingState>();
@@ -262,6 +266,30 @@ namespace Homepad.Core
             RaiseStateChanged();
         }
 
+        public void UnlockDoor()
+        {
+            if (doorLock.isOpen || doorLock.isUnlocking) return;
+
+            doorLock.isUnlocking = true;
+            connector?.SendPacket(KocomProtocol.CreateDoorUnlockPacket());
+            OnDoorLockChanged?.Invoke(doorLock);
+            RaiseStateChanged();
+
+            if (connector != null && connector.UseSimulationMode)
+            {
+                if (doorLockRoutine != null) StopCoroutine(doorLockRoutine);
+                doorLockRoutine = StartCoroutine(SimulateDoorUnlock());
+            }
+        }
+
+        public void SetDoorOpen(bool open)
+        {
+            doorLock.isUnlocking = false;
+            doorLock.isOpen = open;
+            OnDoorLockChanged?.Invoke(doorLock);
+            RaiseStateChanged();
+        }
+
         public LightState AddLight(string name, ushort roomCode)
         {
             int slot = 0;
@@ -428,6 +456,12 @@ namespace Homepad.Core
 
         private void ApplyFrame(KocomProtocol.Frame frame)
         {
+            if (frame.DeviceAddress == KocomProtocol.DeviceDoorLock)
+            {
+                ApplyDoorLockFrame(frame);
+                return;
+            }
+
             if (!KocomProtocol.ShouldApplyState(frame)) return;
 
             ushort device = frame.DeviceAddress;
@@ -586,6 +620,16 @@ namespace Homepad.Core
             RaiseStateChanged();
         }
 
+        private void ApplyDoorLockFrame(KocomProtocol.Frame frame)
+        {
+            if (frame.source != KocomProtocol.DeviceDoorLock) return;
+
+            SetDoorOpen(true);
+            connector?.SendPacket(KocomProtocol.CreateDoorLockAckPacket());
+            if (doorLockRoutine != null) StopCoroutine(doorLockRoutine);
+            doorLockRoutine = StartCoroutine(AutoCloseDoor());
+        }
+
         private void SendLightRoom(ushort room)
         {
             var roomLights = lights.FindAll(item => item.roomCode == room);
@@ -670,6 +714,7 @@ namespace Homepad.Core
                 .Append(DescribeElevator(elevator.direction));
             if (elevator.isCalled) sb.Append("  호출");
             sb.AppendLine();
+            sb.Append("도어락  ").AppendLine(doorLock.isOpen ? "열림" : (doorLock.isUnlocking ? "해제 중" : "잠김"));
             return sb.ToString();
         }
 
@@ -729,6 +774,20 @@ namespace Homepad.Core
             OnElevatorChanged?.Invoke(elevator);
             RaiseStateChanged();
             elevatorRoutine = null;
+        }
+
+        private IEnumerator SimulateDoorUnlock()
+        {
+            yield return new WaitForSeconds(0.4f);
+            SetDoorOpen(true);
+            yield return AutoCloseDoor();
+        }
+
+        private IEnumerator AutoCloseDoor()
+        {
+            yield return new WaitForSeconds(4.5f);
+            SetDoorOpen(false);
+            doorLockRoutine = null;
         }
     }
 }

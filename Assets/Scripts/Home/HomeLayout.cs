@@ -161,7 +161,7 @@ namespace Homepad.Home
             {
                 var item = Items[i];
                 if (item.Kind != kind) continue;
-                if (kind == HomeItemKind.Gas || kind == HomeItemKind.Vent || kind == HomeItemKind.Elevator)
+                if (kind == HomeItemKind.Gas || kind == HomeItemKind.Vent || kind == HomeItemKind.Elevator || kind == HomeItemKind.DoorLock)
                     return true;
                 if (item.RoomHint == hint) return true;
             }
