@@ -451,7 +451,7 @@ namespace Homepad.Core
                 Expand = expand;
             }
 
-            public string Caption => string.IsNullOrEmpty(Hint) ? Label : Label + " | " + Hint;
+            public string Caption => string.IsNullOrEmpty(Hint) ? Label : Hint;
         }
 
         public static HexTableField[] GetHexTableFields(byte[] packet)
@@ -463,15 +463,15 @@ namespace Homepad.Core
 
             return new[]
             {
-                new HexTableField("HDR", HexPair(packet, 0)),
-                new HexTableField("TYPE", HexPair(packet, 2), DescribeType(type)),
-                new HexTableField("PAD", packet[4].ToString("X2")),
-                new HexTableField("DEST", $"{packet[5]:X2} {packet[6]:X2}", DescribePeer(packet[5], packet[6])),
-                new HexTableField("SRC", $"{packet[7]:X2} {packet[8]:X2}", DescribePeer(packet[7], packet[8])),
-                new HexTableField("CMD", packet[9].ToString("X2"), DescribeCommandByte(packet[9])),
-                new HexTableField("VAL", ToHexSlice(packet, 10, 8), null, true),
-                new HexTableField("CS", packet[18].ToString("X2"), checksumOk ? string.Empty : "오류"),
-                new HexTableField("END", HexPair(packet, 19))
+                new HexTableField("시작", HexPair(packet, 0)),
+                new HexTableField("종류", HexPair(packet, 2), DescribeType(type)),
+                new HexTableField("고정", packet[4].ToString("X2")),
+                new HexTableField("수신", $"{packet[5]:X2} {packet[6]:X2}", DescribePeer(packet[5], packet[6])),
+                new HexTableField("송신", $"{packet[7]:X2} {packet[8]:X2}", DescribePeer(packet[7], packet[8])),
+                new HexTableField("명령", packet[9].ToString("X2"), DescribeCommandByte(packet[9])),
+                new HexTableField("값", ToHexSlice(packet, 10, 8), null, true),
+                new HexTableField("합", packet[18].ToString("X2"), checksumOk ? string.Empty : "오류"),
+                new HexTableField("끝", HexPair(packet, 19))
             };
         }
 
@@ -575,8 +575,8 @@ namespace Homepad.Core
             {
                 CmdState => "제어",
                 CmdQuery => "조회",
-                CmdOn => "on",
-                CmdOff => "off",
+                CmdOn => "켜기",
+                CmdOff => "끄기",
                 _ => string.Empty
             };
         }
@@ -585,39 +585,43 @@ namespace Homepad.Core
         {
             string typeStr = frame.type switch
             {
-                TypeTransmit => "요청(REQ)",
-                TypeReport => "상태(STA)",
-                TypeRetransmit1 => "재전송1(30BD)",
-                TypeRetransmit2 => "재전송2(30BE)",
+                TypeTransmit => "요청",
+                TypeReport => "상태",
+                TypeRetransmit1 => "재전송1",
+                TypeRetransmit2 => "재전송2",
                 _ => $"타입(0x{frame.type:X4})"
             };
 
-            ushort roomCode = ResolveRoom(frame);
-            string roomStr = roomCode switch
-            {
-                0x0001 => "거실",
-                0x0101 => "방1",
-                0x0201 => "방2",
-                0x0301 => "방3",
-                _ => $"방(0x{roomCode:X4})"
-            };
+            string src = DescribePeer(frame.srcDevice, frame.srcRoom);
+            string dest = DescribePeer(frame.destDevice, frame.destRoom);
+            if (string.IsNullOrEmpty(src)) src = $"0x{frame.srcDevice:X2}";
+            if (string.IsNullOrEmpty(dest)) dest = $"0x{frame.destDevice:X2}";
 
-            ushort dev = frame.DeviceAddress;
-            string devName = dev switch
-            {
-                DeviceLight => "조명",
-                DeviceHeating => "난방",
-                DeviceVentilation => "환기",
-                DeviceDoorLock => "도어락",
-                DeviceGas => "가스",
-                DeviceElevator => "엘리베이터",
-                AddressWallpad => "월패드",
-                _ => $"장치(0x{dev:X4})"
-            };
+            string cmd = DescribeCommandByte(frame.command);
+            if (string.IsNullOrEmpty(cmd)) cmd = $"CMD 0x{frame.command:X2}";
 
             var sb = new StringBuilder();
-            sb.Append($"[{typeStr}] {devName} ({roomStr}) ");
+            sb.Append('[').Append(typeStr).Append("] ");
+            sb.Append(src).Append(" → ").Append(dest);
+            sb.Append(" · ").Append(cmd);
 
+            string payload = DescribeValue(frame);
+            if (!string.IsNullOrEmpty(payload))
+            {
+                sb.Append(" · ").Append(payload);
+            }
+
+            return sb.ToString();
+        }
+
+        private static string DescribeValue(Frame frame)
+        {
+            if (frame.command == CmdQuery)
+            {
+                return string.Empty;
+            }
+
+            ushort dev = frame.DeviceAddress;
             if (dev == DeviceLight)
             {
                 var onLights = new List<int>();
@@ -628,59 +632,84 @@ namespace Homepad.Core
                         onLights.Add(i + 1);
                     }
                 }
-                if (onLights.Count == 0) sb.Append("전체 OFF");
-                else sb.Append($"스위치 ON: [{string.Join(", ", onLights)}]");
+
+                if (onLights.Count == 0) return "전체 OFF";
+                return "스위치 ON: [" + string.Join(", ", onLights) + "]";
             }
-            else if (dev == DeviceHeating)
+
+            if (dev == DeviceHeating)
             {
-                if (frame.value != null && frame.value.Length >= 4)
-                {
-                    byte m0 = frame.value[0];
-                    byte m1 = frame.value[1];
-                    byte setTemp = frame.value[2];
-                    byte curTemp = frame.value[3];
+                if (frame.value == null || frame.value.Length < 3) return string.Empty;
+                byte m0 = frame.value[0];
+                byte m1 = frame.value.Length > 1 ? frame.value[1] : (byte)0;
+                byte setTemp = frame.value[2];
+                byte curTemp = frame.value.Length > 4 && frame.value[4] > 0
+                    ? frame.value[4]
+                    : (frame.value.Length > 3 ? frame.value[3] : (byte)0);
 
-                    string mode = (m0 == 0x11 && m1 == 0x01) ? "외출" :
-                                  (m0 == 0x11 && m1 == 0x00) ? "가동" :
-                                  (m0 == 0x01 && m1 == 0x00) ? "정지" : $"모드(0x{m0:X2}{m1:X2})";
+                string mode = (m0 == 0x11 && m1 == 0x01) ? "외출" :
+                              (m0 == 0x11 && m1 == 0x00) ? "가동" :
+                              (m0 == 0x01 && m1 == 0x00) ? "정지" : $"모드(0x{m0:X2}{m1:X2})";
 
-                    sb.Append($"{mode}, 설정 {setTemp}°C");
-                    if (curTemp > 0) sb.Append($", 현재 {curTemp}°C");
-                }
+                string text = mode + ", 설정 " + setTemp + "°C";
+                if (curTemp > 0) text += ", 현재 " + curTemp + "°C";
+                return text;
             }
-            else if (dev == DeviceVentilation)
-            {
-                if (frame.value != null && frame.value.Length >= 3)
-                {
-                    byte v0 = frame.value[0];
-                    byte v2 = frame.value[2];
 
-                    if (v0 == 0x00) sb.Append("OFF (정지)");
-                    else if (v0 == 0x11) sb.Append("ON (가동)");
-                    else if (v0 == 0x88)
+            if (dev == DeviceVentilation)
+            {
+                if (frame.value == null || frame.value.Length < 3) return string.Empty;
+                byte v0 = frame.value[0];
+                byte v2 = frame.value[2];
+                if (v0 == 0x00) return "OFF (정지)";
+                if (v0 == 0x11) return "ON (가동)";
+                if (v0 == 0x88)
+                {
+                    string speed = v2 switch
                     {
-                        string speed = v2 switch
-                        {
-                            0x40 => "1단 (약)",
-                            0x80 => "2단 (중)",
-                            0xC0 => "3단 (강)",
-                            _ => $"풍량(0x{v2:X2})"
-                        };
-                        sb.Append($"풍량 {speed}");
-                    }
+                        0x40 => "1단 (약)",
+                        0x80 => "2단 (중)",
+                        0xC0 => "3단 (강)",
+                        _ => $"풍량(0x{v2:X2})"
+                    };
+                    return "풍량 " + speed;
                 }
+
+                return string.Empty;
             }
-            else if (dev == DeviceDoorLock)
+
+            if (dev == DeviceGas)
+            {
+                if (frame.command == CmdOn) return "열림";
+                if (frame.command == CmdOff) return "닫힘";
+                if (frame.value != null && frame.value.Length > 0 && frame.value[0] != 0x00) return "열림";
+                return "닫힘";
+            }
+
+            if (dev == DeviceDoorLock)
             {
                 if (frame.srcDevice == DeviceByteDoorLock && frame.destDevice == DeviceByteWallpad)
-                    sb.Append("문열림 요청 (트리거)");
-                else if (frame.destDevice == DeviceByteDoorLock && frame.srcDevice == DeviceByteWallpad)
-                    sb.Append("도어락 상태 보고");
-                else
-                    sb.Append("도어락 응답/신호");
+                    return "문열림 요청 (트리거)";
+                if (frame.destDevice == DeviceByteDoorLock && frame.srcDevice == DeviceByteWallpad)
+                    return "도어락 상태 보고";
+                return "도어락 응답/신호";
             }
 
-            return sb.ToString();
+            if (dev == DeviceElevator)
+            {
+                if (frame.command == CmdOn) return "호출";
+                byte marker = 0;
+                if (frame.value != null && frame.value.Length > 0)
+                {
+                    marker = frame.value[0] != 0 ? frame.value[0] : (frame.value.Length > 2 ? frame.value[2] : (byte)0);
+                }
+
+                if (marker == 0x03) return "도착/정지";
+                if (marker >= 1 && marker <= 60) return marker + "층";
+                return string.Empty;
+            }
+
+            return string.Empty;
         }
 
         public static byte ComputeChecksum(byte[] packet)

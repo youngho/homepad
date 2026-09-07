@@ -219,10 +219,8 @@ namespace Homepad.UI
 
             serial.OnConnectionStatusChanged -= UpdateStatus;
             serial.OnLogMessage -= AppendLog;
-            serial.OnPacketReceived -= OnPacketReceived;
             serial.OnConnectionStatusChanged += UpdateStatus;
             serial.OnLogMessage += AppendLog;
-            serial.OnPacketReceived += OnPacketReceived;
             UpdateStatus(serial.IsConnected);
         }
 
@@ -231,7 +229,6 @@ namespace Homepad.UI
             if (connector == null) return;
             connector.OnConnectionStatusChanged -= UpdateStatus;
             connector.OnLogMessage -= AppendLog;
-            connector.OnPacketReceived -= OnPacketReceived;
         }
 
         private ArduinoConnector GetConnector()
@@ -604,7 +601,7 @@ namespace Homepad.UI
         public void SendPreset(HexPreset preset)
         {
             if (preset == null) return;
-            AppendLog($"<b>{preset.title}</b>", true, KocomHexPresets.HexStringToBytes(preset.hexString));
+            AppendLog($"<b>{preset.title}</b>", true);
             SendRawHex(preset.hexString);
         }
 
@@ -624,7 +621,7 @@ namespace Homepad.UI
             }
             else
             {
-                AppendLog("<color=#5A98D4>[시뮬레이션 전송]</color>", false, bytes);
+                AppendPacketLog("TX", bytes, true, "#5A98D4");
             }
         }
 
@@ -642,23 +639,8 @@ namespace Homepad.UI
             string hex = customHexInput.text.Trim();
             if (string.IsNullOrEmpty(hex)) return;
 
-            AppendLog("<b>[커스텀 직접전송]</b>", true, KocomHexPresets.HexStringToBytes(hex));
+            AppendLog("<b>[커스텀 직접전송]</b>", true);
             SendRawHex(hex);
-        }
-
-        private void OnPacketReceived(byte[] packet)
-        {
-            if (packet == null || packet.Length < KocomProtocol.PacketSize) return;
-
-            if (KocomProtocol.TryParse(packet, out var frame))
-            {
-                string decoded = KocomProtocol.DecodeFrame(frame);
-                AppendLog($"<color=#5CAE7C>[RX 수신] {decoded}</color>", false, packet);
-            }
-            else
-            {
-                AppendLog("<color=#E5B550>[RX 알수없는 패킷]</color>", false, packet);
-            }
         }
 
         public void ClearLog()
@@ -679,7 +661,60 @@ namespace Homepad.UI
 
         private void AppendLog(string message, bool isTx)
         {
+            if (TryGetPacketFromLog(message, out byte[] fromLog))
+            {
+                string tag = isTx ? "TX" : "RX";
+                string color = isTx ? "#FFFFFF" : "#5CAE7C";
+                if (message.IndexOf("시뮬레이션", StringComparison.Ordinal) >= 0)
+                {
+                    tag = "TX 시뮬레이션";
+                    color = "#5A98D4";
+                }
+
+                AppendPacketLog(tag, fromLog, isTx, color);
+                return;
+            }
+
             AppendLog(message, isTx, null);
+        }
+
+        private void AppendPacketLog(string tag, byte[] packet, bool isTx, string color)
+        {
+            string decoded;
+            if (packet != null && KocomProtocol.TryParse(packet, out var frame))
+            {
+                decoded = KocomProtocol.DecodeFrame(frame);
+            }
+            else if (packet != null && packet.Length >= KocomProtocol.PacketSize)
+            {
+                decoded = "알 수 없는 패킷";
+            }
+            else
+            {
+                decoded = string.Empty;
+            }
+
+            string prefix = string.IsNullOrEmpty(decoded)
+                ? $"<color={color}>[{tag}]</color>"
+                : $"<color={color}>[{tag}] {decoded}</color>";
+            AppendLog(prefix, isTx, packet);
+        }
+
+        private static bool TryGetPacketFromLog(string message, out byte[] packet)
+        {
+            packet = null;
+            if (string.IsNullOrEmpty(message)) return false;
+
+            int start = message.IndexOf("AA", StringComparison.OrdinalIgnoreCase);
+            if (start < 0) return false;
+
+            byte[] bytes = KocomHexPresets.HexStringToBytes(message.Substring(start));
+            if (bytes == null || bytes.Length < KocomProtocol.PacketSize) return false;
+            if (bytes[0] != KocomProtocol.Header1 || bytes[1] != KocomProtocol.Header2) return false;
+
+            packet = new byte[KocomProtocol.PacketSize];
+            Array.Copy(bytes, packet, KocomProtocol.PacketSize);
+            return true;
         }
 
         private void AppendLog(string message, bool isTx, byte[] packet)
@@ -692,6 +727,7 @@ namespace Homepad.UI
             if (packet != null && packet.Length >= KocomProtocol.PacketSize)
             {
                 plain += "\n" + KocomProtocol.FormatHexTable(packet);
+                plain += "\n" + KocomProtocol.ToHexString(packet);
             }
 
             logPlainEntries.Add(plain);
@@ -748,7 +784,7 @@ namespace Homepad.UI
             var le = entry.GetComponent<LayoutElement>();
             le.flexibleWidth = 1f;
 
-            var header = CreateUiText(entry.transform, "Header", HeaderFont(), 18, new Color(0.8f, 0.8f, 0.8f, 1f));
+            var header = CreateUiText(entry.transform, "Header", HeaderFont(), 22, new Color(0.8f, 0.8f, 0.8f, 1f));
             header.supportRichText = true;
             header.alignment = TextAnchor.UpperLeft;
             header.horizontalOverflow = HorizontalWrapMode.Wrap;
@@ -756,7 +792,7 @@ namespace Homepad.UI
             header.text = headerRich;
 
             var headerLe = header.gameObject.AddComponent<LayoutElement>();
-            headerLe.minHeight = 24f;
+            headerLe.minHeight = 32f;
             headerLe.flexibleWidth = 1f;
             var headerFit = header.gameObject.AddComponent<ContentSizeFitter>();
             headerFit.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
@@ -804,8 +840,8 @@ namespace Homepad.UI
             hlg.childForceExpandHeight = true;
 
             var tableLe = table.GetComponent<LayoutElement>();
-            tableLe.minHeight = 58f;
-            tableLe.preferredHeight = 58f;
+            tableLe.minHeight = 76f;
+            tableLe.preferredHeight = 76f;
             tableLe.flexibleWidth = 1f;
 
             for (int i = 0; i < fields.Length; i++)
@@ -841,19 +877,21 @@ namespace Homepad.UI
             }
             else
             {
-                float min = field.Caption.Length >= 8 ? 96f : 52f;
+                float min = 56f;
+                if (field.Label == "수신" || field.Label == "송신") min = 112f;
+                else if (field.Caption.Length >= 8) min = 96f;
                 le.minWidth = min;
                 le.preferredWidth = min;
                 le.flexibleWidth = 0.12f;
             }
 
-            var hex = CreateUiText(cell.transform, "Hex", TableHexFont(), 16, HexTableHex);
+            var hex = CreateUiText(cell.transform, "Hex", TableHexFont(), 20, HexTableHex);
             hex.alignment = TextAnchor.MiddleCenter;
             hex.horizontalOverflow = HorizontalWrapMode.Overflow;
             hex.text = field.Hex;
             var hexLe = hex.gameObject.AddComponent<LayoutElement>();
-            hexLe.minHeight = 22f;
-            hexLe.preferredHeight = 22f;
+            hexLe.minHeight = 28f;
+            hexLe.preferredHeight = 28f;
 
             var rule = new GameObject("Rule", typeof(RectTransform), typeof(Image), typeof(LayoutElement));
             rule.hideFlags = HideFlags.DontSave;
@@ -866,13 +904,13 @@ namespace Homepad.UI
             ruleLe.preferredHeight = 1f;
             ruleLe.flexibleWidth = 1f;
 
-            var cap = CreateUiText(cell.transform, "Caption", HeaderFont(), 16, HexTableLabel);
+            var cap = CreateUiText(cell.transform, "Caption", HeaderFont(), 18, HexTableLabel);
             cap.alignment = TextAnchor.MiddleCenter;
             cap.horizontalOverflow = HorizontalWrapMode.Overflow;
             cap.text = field.Caption;
             var capLe = cap.gameObject.AddComponent<LayoutElement>();
-            capLe.minHeight = 22f;
-            capLe.preferredHeight = 22f;
+            capLe.minHeight = 26f;
+            capLe.preferredHeight = 26f;
         }
 
         private static Text CreateUiText(Transform parent, string name, Font font, int fontSize, Color color)
@@ -1839,7 +1877,7 @@ namespace Homepad.UI
             hexGo.transform.SetParent(row.transform, false);
             var hexText = hexGo.GetComponent<Text>();
             hexText.font = uiFont;
-            hexText.fontSize = 16;
+            hexText.fontSize = 18;
             hexText.text = preset.hexString;
             hexText.color = HexCodeCyan;
             hexText.alignment = TextAnchor.MiddleLeft;
