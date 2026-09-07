@@ -56,6 +56,7 @@ namespace Homepad.UI
         private ArduinoLinkMode ew11Protocol = ArduinoLinkMode.Tcp;
         private bool linkUiApplying;
         private bool autoConnectAttempted;
+        private Coroutine logScrollRoutine;
 
         private void Awake()
         {
@@ -770,6 +771,7 @@ namespace Homepad.UI
         {
             if (logPanel != null) logPanel.SetActive(on);
             if (showLogToggle != null) showLogToggle.SetIsOnWithoutNotify(on);
+            if (on) PinLogToBottomNextFrame();
             if (save)
             {
                 PlayerPrefs.SetInt("Homepad.ShowHexLog", on ? 1 : 0);
@@ -780,7 +782,8 @@ namespace Homepad.UI
         private void AppendLog(string message, bool isTx)
         {
             string color = isTx ? "#55AAFF" : "#AAAAAA";
-            logBuilder.Append($"<color=#888888>[{DateTime.Now:HH:mm:ss}]</color> <color={color}>{message}</color>\n");
+            if (logBuilder.Length > 0) logBuilder.Append('\n');
+            logBuilder.Append($"<color=#888888>[{DateTime.Now:HH:mm:ss}]</color> <color={color}>{message}</color>");
             logLineCount++;
             if (logLineCount > MaxLogLines)
             {
@@ -793,12 +796,64 @@ namespace Homepad.UI
                 }
             }
 
-            if (logText != null) logText.text = logBuilder.ToString();
-            if (logScrollRect != null)
+            if (logText != null)
             {
-                Canvas.ForceUpdateCanvases();
-                logScrollRect.verticalNormalizedPosition = 0f;
+                logText.text = logBuilder.ToString();
             }
+
+            PinLogToBottom();
+            PinLogToBottomNextFrame();
+        }
+
+        private void PinLogToBottomNextFrame()
+        {
+            if (!isActiveAndEnabled)
+            {
+                PinLogToBottom();
+                return;
+            }
+
+            if (logScrollRoutine != null) StopCoroutine(logScrollRoutine);
+            logScrollRoutine = StartCoroutine(PinLogToBottomRoutine());
+        }
+
+        private IEnumerator PinLogToBottomRoutine()
+        {
+            yield return null;
+            PinLogToBottom();
+            yield return new WaitForEndOfFrame();
+            PinLogToBottom();
+            logScrollRoutine = null;
+        }
+
+        private void PinLogToBottom()
+        {
+            if (logScrollRect == null) return;
+
+            var content = logScrollRect.content != null
+                ? logScrollRect.content
+                : logText != null ? logText.rectTransform.parent as RectTransform : null;
+            if (content == null) return;
+
+            Canvas.ForceUpdateCanvases();
+            if (logText != null)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(logText.rectTransform);
+            }
+
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            Canvas.ForceUpdateCanvases();
+
+            var view = logScrollRect.viewport != null
+                ? logScrollRect.viewport
+                : logScrollRect.GetComponent<RectTransform>();
+            float max = 0f;
+            if (view != null)
+            {
+                max = Mathf.Max(0f, content.rect.height - view.rect.height);
+            }
+
+            content.anchoredPosition = new Vector2(content.anchoredPosition.x, max);
         }
 
         private void ClearLogs()

@@ -723,8 +723,8 @@ MonoBehaviour:
   settingsRoot: {fileID: 1265041615}
   showLogToggle: {fileID: 0}
   logPanel: {fileID: 675862396}
-  logText: {fileID: 0}
-  logScrollRect: {fileID: 0}
+  logText: {fileID: 1660102566}
+  logScrollRect: {fileID: 24661307}
   clearLogButton: {fileID: 0}
   connector: {fileID: 200003}
 --- !u!1 &20631853
@@ -882,8 +882,8 @@ RectTransform:
   - {fileID: 79881407}
   m_Father: {fileID: 675862397}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.02, y: 0.06}
-  m_AnchorMax: {x: 0.82, y: 0.94}
+  m_AnchorMin: {x: 0.012, y: 0.04}
+  m_AnchorMax: {x: 0.82, y: 0.96}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -1188,7 +1188,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: -24, y: -24}
+  m_SizeDelta: {x: -16, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &79881408
 MonoBehaviour:
@@ -5036,7 +5036,7 @@ RectTransform:
   m_Father: {fileID: 400001}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.04, y: 0.02}
-  m_AnchorMax: {x: 0.96, y: 0.16}
+  m_AnchorMax: {x: 0.96, y: 0.28}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -8757,7 +8757,7 @@ RectTransform:
   - {fileID: 1550266501}
   m_Father: {fileID: 400001}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.04, y: 0.18}
+  m_AnchorMin: {x: 0.04, y: 0.30}
   m_AnchorMax: {x: 0.96, y: 0.94}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
@@ -11612,8 +11612,8 @@ RectTransform:
   - {fileID: 1943056463}
   m_Father: {fileID: 675862397}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.84, y: 0.12}
-  m_AnchorMax: {x: 0.98, y: 0.88}
+  m_AnchorMin: {x: 0.835, y: 0.04}
+  m_AnchorMax: {x: 0.988, y: 0.96}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -12160,6 +12160,7 @@ GameObject:
   - component: {fileID: 1660102565}
   - component: {fileID: 1660102567}
   - component: {fileID: 1660102566}
+  - component: {fileID: 1660102568}
   m_Layer: 0
   m_Name: LogText
   m_TagString: Untagged
@@ -12184,7 +12185,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 100, y: 100}
+  m_SizeDelta: {x: 0, y: 24}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!114 &1660102566
 MonoBehaviour:
@@ -12207,8 +12208,8 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   m_FontData:
-    m_Font: {fileID: 12800000, guid: c1a2b3c4d5e64f708192a3b4c5d6e7f8, type: 3}
-    m_FontSize: 16
+    m_Font: {fileID: 12800000, guid: e5f6a7b8c9d04e1f2a3b4c5d6e7f8091, type: 3}
+    m_FontSize: 18
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
@@ -12228,6 +12229,20 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1660102564}
   m_CullTransparentMesh: 1
+--- !u!114 &1660102568
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1660102564}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3245ec927659c4140ac4f8d17403cc18, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.ContentSizeFitter
+  m_HorizontalFit: 0
+  m_VerticalFit: 2
 --- !u!1 &1684568351
 GameObject:
   m_ObjectHideFlags: 0
@@ -14136,6 +14151,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1927702637}
+  - component: {fileID: 1927702639}
   - component: {fileID: 1927702638}
   m_Layer: 0
   m_Name: Content
@@ -14178,6 +14194,32 @@ MonoBehaviour:
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.ContentSizeFitter
   m_HorizontalFit: 0
   m_VerticalFit: 2
+--- !u!114 &1927702639
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1927702636}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 59f8146938fff824cb5fd77236b75775, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.VerticalLayoutGroup
+  m_Padding:
+    m_Left: 8
+    m_Right: 4
+    m_Top: 2
+    m_Bottom: 0
+  m_ChildAlignment: 0
+  m_Spacing: 0
+  m_ChildForceExpandWidth: 1
+  m_ChildForceExpandHeight: 0
+  m_ChildControlWidth: 1
+  m_ChildControlHeight: 1
+  m_ChildScaleWidth: 0
+  m_ChildScaleHeight: 0
+  m_ReverseArrangement: 0
 --- !u!1 &1930168981
 GameObject:
   m_ObjectHideFlags: 0
