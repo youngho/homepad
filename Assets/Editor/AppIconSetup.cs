@@ -4,6 +4,7 @@ using System.Reflection;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEngine;
+using UnityEngine.Assemblies;
 
 namespace Homepad.Editor
 {
@@ -122,8 +123,8 @@ namespace Homepad.Editor
 
         private static PlatformIconKind FindKind(string typeName, string property)
         {
-            var asms = AppDomain.CurrentDomain.GetAssemblies();
-            for (int i = 0; i < asms.Length; i++)
+            var asms = CurrentAssemblies.GetLoadedAssemblies();
+            for (int i = 0; i < asms.Count; i++)
             {
                 var type = asms[i].GetType(typeName);
                 if (type == null) continue;

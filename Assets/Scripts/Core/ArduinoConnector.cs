@@ -90,7 +90,7 @@ namespace Homepad.Core
 
         public static ArduinoConnector FindPreferred()
         {
-            var all = FindObjectsByType<ArduinoConnector>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var all = FindObjectsByType<ArduinoConnector>(FindObjectsInactive.Include);
             ArduinoConnector connected = null;
             ArduinoConnector standalone = null;
             ArduinoConnector any = null;

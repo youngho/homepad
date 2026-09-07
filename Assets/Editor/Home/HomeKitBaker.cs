@@ -158,7 +158,7 @@ namespace Homepad.Editor
             if (ledMat == null) ledMat = Emissive(Root + "/Materials/DoorLockLed.mat", new Color(0.72f, 0.18f, 0.16f), new Color(1.8f, 0.18f, 0.12f));
 
             var prefab = BuildDoorLock(trim, doorMat, body, metal, ledMat);
-            var builder = Object.FindFirstObjectByType<IsometricHomeBuilder>();
+            var builder = Object.FindAnyObjectByType<IsometricHomeBuilder>();
             if (builder != null)
             {
                 var so = new SerializedObject(builder);
@@ -213,7 +213,7 @@ namespace Homepad.Editor
             if (metal == null) metal = Lit(Root + "/Materials/LampMetal.mat", new Color(0.72f, 0.7f, 0.66f), 0.7f);
 
             var prefab = BuildGasValve(body, metal, GasHandle(Root + "/Materials/GasHandle.mat"));
-            var builder = Object.FindFirstObjectByType<IsometricHomeBuilder>();
+            var builder = Object.FindAnyObjectByType<IsometricHomeBuilder>();
             if (builder != null)
             {
                 var so = new SerializedObject(builder);
@@ -281,7 +281,7 @@ namespace Homepad.Editor
 
         static void AssignToScene(GameObject room, GameObject lamp, GameObject heater, GameObject gas)
         {
-            var builder = Object.FindFirstObjectByType<IsometricHomeBuilder>();
+            var builder = Object.FindAnyObjectByType<IsometricHomeBuilder>();
             if (builder == null) return;
             var so = new SerializedObject(builder);
             so.FindProperty("livingRoomPrefab").objectReferenceValue = room;

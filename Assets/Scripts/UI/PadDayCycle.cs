@@ -201,7 +201,7 @@ namespace Homepad.UI
 
             var builder = HomeController.Instance != null
                 ? HomeController.Instance.GetComponent<IsometricHomeBuilder>()
-                : FindFirstObjectByType<IsometricHomeBuilder>();
+                : FindAnyObjectByType<IsometricHomeBuilder>();
             if (builder == null) return;
             builder.SetGroundColor(look.ground);
             builder.SetShellLook(look.wall, look.edge, look.edgeEmission, look.frame);

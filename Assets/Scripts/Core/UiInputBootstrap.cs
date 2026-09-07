@@ -25,7 +25,7 @@ namespace Homepad.Core
         {
             EnsureUiActionMap();
 
-            var eventSystems = Object.FindObjectsByType<EventSystem>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var eventSystems = Object.FindObjectsByType<EventSystem>(FindObjectsInactive.Include);
             if (eventSystems.Length == 0)
             {
                 var go = new GameObject("EventSystem");

@@ -240,7 +240,7 @@ namespace Homepad.UI
                 if (connector) return connector;
             }
 
-            connector = FindFirstObjectByType<ArduinoConnector>(FindObjectsInactive.Include);
+            connector = FindAnyObjectByType<ArduinoConnector>(FindObjectsInactive.Include);
             if (connector) return connector;
 
             var host = WallpadManager.Instance != null

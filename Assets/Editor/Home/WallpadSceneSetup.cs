@@ -72,7 +72,7 @@ namespace Homepad.Editor
             volume.profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(ProfilePath);
 
             // 5. Wire kit prefabs on IsometricHomeBuilder
-            var builder = Object.FindFirstObjectByType<IsometricHomeBuilder>();
+            var builder = Object.FindAnyObjectByType<IsometricHomeBuilder>();
             if (builder != null)
             {
                 var so = new SerializedObject(builder);

@@ -39,7 +39,7 @@ namespace Homepad.Home
         public static HomeController EnsureExists()
         {
             if (Instance != null) return Instance;
-            var existing = FindFirstObjectByType<HomeController>();
+            var existing = FindAnyObjectByType<HomeController>();
             if (existing != null)
             {
                 Instance = existing;

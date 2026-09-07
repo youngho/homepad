@@ -29,7 +29,7 @@ namespace Homepad.Core
 
         private static UnityMainThreadDispatcher FindStandalone()
         {
-            var all = FindObjectsByType<UnityMainThreadDispatcher>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var all = FindObjectsByType<UnityMainThreadDispatcher>(FindObjectsInactive.Include);
             for (int i = 0; i < all.Length; i++)
             {
                 if (all[i] != null && all[i].GetComponent<WallpadManager>() == null)
