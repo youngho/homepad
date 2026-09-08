@@ -38,12 +38,12 @@ namespace Homepad.Core
 
         public const byte LightOn = 0xFF;
         public const byte LightOff = 0x00;
-        public const byte HeatPowerOn0 = 0x11;
-        public const byte HeatPowerOn1 = 0x00;
-        public const byte HeatPowerOff0 = 0x01;
-        public const byte HeatPowerOff1 = 0x00;
-        public const byte HeatAway0 = 0x11;
-        public const byte HeatAway1 = 0x01;
+        // 난방 VALUE[0] (바이트 10). CMD가 아니다.
+        public const byte HeatRun = 0x11;
+        public const byte HeatStop = 0x01;
+        // 난방 VALUE[1] (바이트 11). 외출 플래그.
+        public const byte HeatAwayOff = 0x00;
+        public const byte HeatAwayOn = 0x01;
         public const ushort CommandControl = 0x0000;
         public const ushort CommandQuery = 0x003A;
         public const ushort CommandDoorStatus = 0x0001;
@@ -240,23 +240,10 @@ namespace Homepad.Core
         {
             byte temp = (byte)Mathf.Clamp(Mathf.RoundToInt(targetTemp), 5, 40);
             byte[] value = new byte[8];
-            if (awayMode)
-            {
-                value[0] = HeatAway0;
-                value[1] = HeatAway1;
-            }
-            else if (!power)
-            {
-                value[0] = HeatPowerOff0;
-                value[1] = HeatPowerOff1;
-            }
-            else
-            {
-                value[0] = HeatPowerOn0;
-                value[1] = HeatPowerOn1;
-            }
+            value[0] = power ? HeatRun : HeatStop;
+            value[1] = awayMode ? HeatAwayOn : HeatAwayOff;
             value[2] = temp;
-            return BuildRequest(DeviceHeating, room, CommandControl, value);
+            return BuildRequest(DeviceHeating, room, CmdState, value);
         }
 
         public static byte[] CreateGasClosePacket()
@@ -647,11 +634,11 @@ namespace Homepad.Core
                     ? frame.value[4]
                     : (frame.value.Length > 3 ? frame.value[3] : (byte)0);
 
-                string mode = (m0 == 0x11 && m1 == 0x01) ? "외출" :
-                              (m0 == 0x11 && m1 == 0x00) ? "가동" :
-                              (m0 == 0x01 && m1 == 0x00) ? "정지" : $"모드(0x{m0:X2}{m1:X2})";
+                string run = m0 == HeatRun ? "가동" : m0 == HeatStop ? "정지" : $"VALUE0(0x{m0:X2})";
+                if (m1 == HeatAwayOn) run += ", 외출";
+                else if (m1 != HeatAwayOff) run += $", VALUE1(0x{m1:X2})";
 
-                string text = mode + ", 설정 " + setTemp + "°C";
+                string text = run + ", 설정 " + setTemp + "°C";
                 if (curTemp > 0) text += ", 현재 " + curTemp + "°C";
                 return text;
             }

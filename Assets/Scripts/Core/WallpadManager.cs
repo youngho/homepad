@@ -221,7 +221,7 @@ namespace Homepad.Core
             if (room == null) return;
 
             room.isPowered = !room.isPowered;
-            if (room.isPowered) room.isAwayMode = false;
+            room.isAwayMode = false;
             SendHeating(room);
             OnHeatingChanged?.Invoke(room);
             RaiseStateChanged();
@@ -233,7 +233,7 @@ namespace Homepad.Core
             if (room == null) return;
 
             room.isAwayMode = !room.isAwayMode;
-            if (room.isAwayMode) room.isPowered = false;
+            if (room.isAwayMode) room.isPowered = true;
             SendHeating(room);
             OnHeatingChanged?.Invoke(room);
             RaiseStateChanged();
@@ -382,6 +382,7 @@ namespace Homepad.Core
                 foreach (var room in heatingRooms)
                 {
                     room.isAwayMode = true;
+                    room.isPowered = true;
                     SendHeating(room);
                     OnHeatingChanged?.Invoke(room);
                 }
@@ -687,23 +688,8 @@ namespace Homepad.Core
         {
             if (frame.value == null || frame.value.Length < 3 || room == null) return;
 
-            byte mode0 = frame.value[0];
-            byte mode1 = frame.value[1];
-            if (mode0 == KocomProtocol.HeatPowerOff0 && mode1 == KocomProtocol.HeatPowerOff1)
-            {
-                room.isPowered = false;
-                room.isAwayMode = false;
-            }
-            else if (mode0 == KocomProtocol.HeatAway0 && mode1 == KocomProtocol.HeatAway1)
-            {
-                room.isPowered = false;
-                room.isAwayMode = true;
-            }
-            else if (mode0 == KocomProtocol.HeatPowerOn0)
-            {
-                room.isPowered = true;
-                room.isAwayMode = false;
-            }
+            room.isPowered = frame.value[0] == KocomProtocol.HeatRun;
+            room.isAwayMode = frame.value[1] == KocomProtocol.HeatAwayOn;
 
             if (frame.value[2] >= 5)
             {
@@ -828,7 +814,8 @@ namespace Homepad.Core
                 for (int i = 0; i < heatingRooms.Count; i++)
                 {
                     var room = heatingRooms[i];
-                    string mode = room.isAwayMode ? "외출" : (room.isPowered ? "가동" : "정지");
+                    string mode = room.isPowered ? "가동" : "정지";
+                    if (room.isAwayMode) mode += "·외출";
                     sb.Append("  ")
                         .Append(string.IsNullOrEmpty(room.roomName) ? DescribeRoom(room.roomCode) : room.roomName)
                         .Append("  ")
