@@ -111,6 +111,11 @@ namespace Homepad.UI
         private RectTransform rightPanelRt;
         private float panelsMaxY = 0.86f;
         private bool linkUiApplying;
+        private readonly Queue<byte[]> requestQueue = new Queue<byte[]>();
+        private Coroutine requestBurstRoutine;
+        private ushort pendingAckDevice;
+        private ushort pendingAckRoom;
+        private bool pendingAckSatisfied;
 
         private void Awake()
         {
@@ -220,8 +225,10 @@ namespace Homepad.UI
 
             serial.OnConnectionStatusChanged -= UpdateStatus;
             serial.OnLogMessage -= AppendLog;
+            serial.OnPacketReceived -= OnPacketReceived;
             serial.OnConnectionStatusChanged += UpdateStatus;
             serial.OnLogMessage += AppendLog;
+            serial.OnPacketReceived += OnPacketReceived;
             UpdateStatus(serial.IsConnected);
         }
 
@@ -230,6 +237,7 @@ namespace Homepad.UI
             if (connector == null) return;
             connector.OnConnectionStatusChanged -= UpdateStatus;
             connector.OnLogMessage -= AppendLog;
+            connector.OnPacketReceived -= OnPacketReceived;
         }
 
         private ArduinoConnector GetConnector()
@@ -625,14 +633,90 @@ namespace Homepad.UI
                 return;
             }
 
-            var connector = GetConnector();
-            if (connector != null)
+            // 30 BC만 월패드처럼 BC→BD→BE. STA(30 DC)나 이미 BD/BE인 줄은 한 번만.
+            if (!KocomProtocol.IsTransmitPacket(bytes))
             {
-                connector.SendPacket(bytes);
+                SendOnce(bytes);
+                return;
             }
-            else
+
+            requestQueue.Enqueue(bytes);
+            if (requestBurstRoutine == null)
             {
-                AppendPacketLog("TX", bytes, true, "#5A98D4");
+                requestBurstRoutine = StartCoroutine(ProcessRequestQueue());
+            }
+        }
+
+        private void SendOnce(byte[] packet)
+        {
+            var serial = GetConnector();
+            if (serial != null)
+            {
+                serial.SendPacket(packet);
+                return;
+            }
+
+            AppendPacketLog("TX", packet, true, "#5A98D4");
+        }
+
+        private IEnumerator ProcessRequestQueue()
+        {
+            while (requestQueue.Count > 0)
+            {
+                yield return SendBcBdBe(requestQueue.Dequeue());
+                if (requestQueue.Count > 0)
+                {
+                    yield return new WaitForSecondsRealtime(0.05f);
+                }
+            }
+
+            requestBurstRoutine = null;
+        }
+
+        private IEnumerator SendBcBdBe(byte[] bc)
+        {
+            if (!KocomProtocol.TryParse(bc, out var frame))
+            {
+                SendOnce(bc);
+                yield break;
+            }
+
+            // 엘리베이터는 답을 못 기다려 바로 세 발. 환기처럼 DC가 없는 장치는 250ms 뒤 BD/BE.
+            bool waitForReport = frame.DeviceAddress != KocomProtocol.DeviceElevator;
+            pendingAckDevice = frame.DeviceAddress;
+            pendingAckRoom = KocomProtocol.ResolveRoom(frame);
+            pendingAckSatisfied = false;
+
+            SendOnce(bc);
+
+            float waitBd = waitForReport
+                ? KocomProtocol.RetransmitWaitBdMs / 1000f
+                : KocomProtocol.RetransmitGapBeMs / 1000f;
+            float waited = 0f;
+            while (waited < waitBd)
+            {
+                if (waitForReport && pendingAckSatisfied) yield break;
+                waited += Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            if (waitForReport && pendingAckSatisfied) yield break;
+
+            SendOnce(KocomProtocol.CloneWithType(bc, KocomProtocol.TypeRetransmit1));
+            yield return new WaitForSecondsRealtime(KocomProtocol.RetransmitGapBeMs / 1000f);
+
+            if (waitForReport && pendingAckSatisfied) yield break;
+
+            SendOnce(KocomProtocol.CloneWithType(bc, KocomProtocol.TypeRetransmit2));
+        }
+
+        private void OnPacketReceived(byte[] raw)
+        {
+            if (!KocomProtocol.TryParse(raw, out var frame)) return;
+            if (frame.type != KocomProtocol.TypeReport) return;
+            if (pendingAckDevice == frame.DeviceAddress && pendingAckRoom == KocomProtocol.ResolveRoom(frame))
+            {
+                pendingAckSatisfied = true;
             }
         }
 

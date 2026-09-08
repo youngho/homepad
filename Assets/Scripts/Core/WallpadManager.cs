@@ -272,6 +272,15 @@ namespace Homepad.Core
             RaiseStateChanged();
         }
 
+        public void TurnVentilationOn()
+        {
+            ventilation.speed = VentilationSpeed.Low;
+            ventilation.isPowered = true;
+            SendRequest(KocomProtocol.CreateVentilationPacket(VentilationSpeed.Low, fromOff: true));
+            OnVentilationChanged?.Invoke(ventilation);
+            RaiseStateChanged();
+        }
+
         public void CallElevator(int floor = -1)
         {
             if (floor < 1) floor = HouseholdFloor;

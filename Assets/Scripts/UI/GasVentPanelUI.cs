@@ -16,17 +16,19 @@ namespace Homepad.UI
         [SerializeField] private Button gasCloseButton;
         [SerializeField] private Text ventText;
         [SerializeField] private Button offButton;
+        [SerializeField] private Button onButton;
         [SerializeField] private Button lowButton;
         [SerializeField] private Button medButton;
         [SerializeField] private Button highButton;
 
-        public void Bind(Text gasStatusText, Image indicator, Button closeButton, Text ventilationText, Button off, Button low, Button med, Button high)
+        public void Bind(Text gasStatusText, Image indicator, Button closeButton, Text ventilationText, Button off, Button on, Button low, Button med, Button high)
         {
             gasStatus = gasStatusText;
             gasIndicator = indicator;
             gasCloseButton = closeButton;
             ventText = ventilationText;
             offButton = off;
+            onButton = on;
             lowButton = low;
             medButton = med;
             highButton = high;
@@ -41,6 +43,7 @@ namespace Homepad.UI
         {
             Bind(gasCloseButton, () => WallpadManager.Instance?.CloseGasValve());
             Bind(offButton, () => WallpadManager.Instance?.SetVentilationSpeed(VentilationSpeed.Off));
+            Bind(onButton, () => WallpadManager.Instance?.TurnVentilationOn());
             Bind(lowButton, () => WallpadManager.Instance?.SetVentilationSpeed(VentilationSpeed.Low));
             Bind(medButton, () => WallpadManager.Instance?.SetVentilationSpeed(VentilationSpeed.Medium));
             Bind(highButton, () => WallpadManager.Instance?.SetVentilationSpeed(VentilationSpeed.High));
@@ -87,7 +90,9 @@ namespace Homepad.UI
                 ventText.text = $"현재 풍량: {speedName}";
             }
 
-            SetActive(offButton, vent.speed == VentilationSpeed.Off);
+            bool powered = vent.isPowered && vent.speed != VentilationSpeed.Off;
+            SetActive(offButton, !powered);
+            SetActive(onButton, powered);
             SetActive(lowButton, vent.speed == VentilationSpeed.Low);
             SetActive(medButton, vent.speed == VentilationSpeed.Medium);
             SetActive(highButton, vent.speed == VentilationSpeed.High);
