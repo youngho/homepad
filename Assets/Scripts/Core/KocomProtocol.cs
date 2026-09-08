@@ -240,15 +240,15 @@ namespace Homepad.Core
         {
             byte temp = (byte)Mathf.Clamp(Mathf.RoundToInt(targetTemp), 5, 40);
             byte[] value = new byte[8];
-            if (!power)
-            {
-                value[0] = HeatPowerOff0;
-                value[1] = HeatPowerOff1;
-            }
-            else if (awayMode)
+            if (awayMode)
             {
                 value[0] = HeatAway0;
                 value[1] = HeatAway1;
+            }
+            else if (!power)
+            {
+                value[0] = HeatPowerOff0;
+                value[1] = HeatPowerOff1;
             }
             else
             {

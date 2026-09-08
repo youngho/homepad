@@ -32,7 +32,7 @@ namespace Homepad.Core
         public float targetTemp;
         public ushort roomCode;
 
-        public HeatingState(int roomId, string roomName, float currentTemp = 22f, float targetTemp = 24f, ushort roomCode = 0x0001)
+        public HeatingState(int roomId, string roomName, float currentTemp = 99f, float targetTemp = 24f, ushort roomCode = 0x0001)
         {
             this.roomId = roomId;
             this.roomName = roomName;

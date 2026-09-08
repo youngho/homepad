@@ -34,7 +34,7 @@ namespace Homepad.Core
             public int roomId = 1;
             public string roomName = "거실";
             public ushort roomCode = 0x0001;
-            public float currentTemp = 22f;
+            public float currentTemp = 99f;
             public float targetTemp = 24f;
         }
 

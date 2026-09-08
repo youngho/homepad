@@ -67,15 +67,17 @@ namespace Homepad.UI
                 if (room == null) continue;
 
                 if (slot.nameText != null) slot.nameText.text = room.roomName;
-                if (slot.currentTempText != null) slot.currentTempText.text = $"현재 {room.currentTemp:F1}℃";
-                if (slot.targetTempText != null) slot.targetTempText.text = $"{room.targetTemp:F1}℃";
+                if (slot.currentTempText != null) slot.currentTempText.text = $"현재 {room.currentTemp:F0}℃";
+                if (slot.targetTempText != null) slot.targetTempText.text = $"{room.targetTemp:F0}℃";
                 if (slot.powerText != null) slot.powerText.text = "난방";
-                if (slot.awayText != null) slot.awayText.text = room.isAwayMode ? "외출 중" : "일반";
+                if (slot.awayText != null) slot.awayText.text = "외출";
 
                 if (slot.powerButton != null)
                 {
                     var image = slot.powerButton.GetComponent<Image>();
-                    if (image != null) image.color = room.isPowered ? new Color(0.82f, 0.40f, 0.22f) : new Color(0.10f, 0.12f, 0.16f);
+                    if (image != null) image.color = room.isPowered && !room.isAwayMode
+                        ? new Color(0.82f, 0.40f, 0.22f)
+                        : new Color(0.10f, 0.12f, 0.16f);
                 }
 
                 if (slot.awayButton != null)
@@ -96,13 +98,13 @@ namespace Homepad.UI
                 {
                     var room = FindRoom(roomId);
                     if (room == null) return;
-                    WallpadManager.Instance?.SetHeatingTargetTemp(roomId, room.targetTemp - 0.5f);
+                    WallpadManager.Instance?.SetHeatingTargetTemp(roomId, Mathf.RoundToInt(room.targetTemp) - 1f);
                 });
                 BindButton(rooms[i].upButton, () =>
                 {
                     var room = FindRoom(roomId);
                     if (room == null) return;
-                    WallpadManager.Instance?.SetHeatingTargetTemp(roomId, room.targetTemp + 0.5f);
+                    WallpadManager.Instance?.SetHeatingTargetTemp(roomId, Mathf.RoundToInt(room.targetTemp) + 1f);
                 });
                 BindButton(rooms[i].powerButton, () => WallpadManager.Instance?.ToggleHeatingPower(roomId));
                 BindButton(rooms[i].awayButton, () => WallpadManager.Instance?.ToggleHeatingAway(roomId));

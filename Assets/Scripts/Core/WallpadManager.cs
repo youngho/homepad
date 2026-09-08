@@ -221,6 +221,7 @@ namespace Homepad.Core
             if (room == null) return;
 
             room.isPowered = !room.isPowered;
+            if (room.isPowered) room.isAwayMode = false;
             SendHeating(room);
             OnHeatingChanged?.Invoke(room);
             RaiseStateChanged();
@@ -232,6 +233,7 @@ namespace Homepad.Core
             if (room == null) return;
 
             room.isAwayMode = !room.isAwayMode;
+            if (room.isAwayMode) room.isPowered = false;
             SendHeating(room);
             OnHeatingChanged?.Invoke(room);
             RaiseStateChanged();
@@ -357,7 +359,7 @@ namespace Homepad.Core
                 if (heatingRooms[i].roomId >= id) id = heatingRooms[i].roomId + 1;
             }
 
-            var room = new HeatingState(id, string.IsNullOrEmpty(roomName) ? "방" : roomName, 22f, 24f, roomCode);
+            var room = new HeatingState(id, string.IsNullOrEmpty(roomName) ? "방" : roomName, 99f, 24f, roomCode);
             ApplyCachedHeating(room);
             heatingRooms.Add(room);
             OnHeatingChanged?.Invoke(room);
@@ -667,7 +669,7 @@ namespace Homepad.Core
             ushort roomCode = KocomProtocol.ResolveRoom(frame);
             if (!heatingByRoom.TryGetValue(roomCode, out var cached))
             {
-                cached = new HeatingState(0, string.Empty, 22f, 24f, roomCode);
+                cached = new HeatingState(0, string.Empty, 99f, 24f, roomCode);
                 heatingByRoom[roomCode] = cached;
             }
 
@@ -694,7 +696,7 @@ namespace Homepad.Core
             }
             else if (mode0 == KocomProtocol.HeatAway0 && mode1 == KocomProtocol.HeatAway1)
             {
-                room.isPowered = true;
+                room.isPowered = false;
                 room.isAwayMode = true;
             }
             else if (mode0 == KocomProtocol.HeatPowerOn0)
