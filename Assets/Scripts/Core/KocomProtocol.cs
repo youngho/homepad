@@ -57,7 +57,7 @@ namespace Homepad.Core
         public const byte CmdQuery = 0x3A;
 
         public const byte VentCmdSpeed = 0x88;
-        public const byte VentMarker = 0x03;
+        public const byte VentMarker = 0xA0;
         public const byte VentFanOff = 0xFC;
         public const byte VentFanLow = 0x40;
         public const byte VentFanMid = 0x80;
