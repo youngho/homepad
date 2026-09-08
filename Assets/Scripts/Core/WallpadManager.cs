@@ -688,7 +688,7 @@ namespace Homepad.Core
         {
             if (frame.value == null || frame.value.Length < 3 || room == null) return;
 
-            room.isPowered = frame.value[0] == KocomProtocol.HeatRun;
+            room.isPowered = frame.value[0] == KocomProtocol.DeviceOn;
             room.isAwayMode = frame.value[1] == KocomProtocol.HeatAwayOn;
 
             if (frame.value[2] >= 5)

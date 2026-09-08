@@ -43,10 +43,10 @@ namespace Homepad.Core
         public const byte Room3 = 0x03;
 
         public const byte LightOn = 0xFF;
-        // VALUE 슬롯 Off (조명 스위치, 환기 VALUE[0]). 바이트 9의 CmdOff가 아니다.
+        // VALUE 슬롯 (조명 스위치, 환기 VALUE[0]). 바이트 9의 CmdOn/CmdOff가 아니다.
+        // 조명 On은 LightOn=FF. 환기·난방 On/가동은 DeviceOn=11. 난방 정지는 01.
         public const byte DeviceOff = 0x00;
-        // 난방 VALUE[0] (바이트 10). 정지는 DeviceOff가 아니라 01.
-        public const byte HeatRun = 0x11;
+        public const byte DeviceOn = 0x11;
         public const byte HeatStop = 0x01;
         // 난방 VALUE[1] (바이트 11). 외출 플래그.
         public const byte HeatAwayOff = 0x00;
@@ -56,8 +56,7 @@ namespace Homepad.Core
         public const byte CmdOff = 0x02;
         public const byte CmdQuery = 0x3A;
 
-        public const byte VentCmdOn = 0x11;
-        public const byte VentCmdSpeed = 0x11;
+        public const byte VentCmdSpeed = 0x88;
         public const byte VentMarker = 0x03;
         public const byte VentFanOff = 0xFC;
         public const byte VentFanLow = 0x40;
@@ -220,7 +219,7 @@ namespace Homepad.Core
         {
             byte temp = (byte)Mathf.Clamp(Mathf.RoundToInt(targetTemp), 5, 40);
             byte[] value = new byte[8];
-            value[0] = power ? HeatRun : HeatStop;
+            value[0] = power ? DeviceOn : HeatStop;
             value[1] = awayMode ? HeatAwayOn : HeatAwayOff;
             value[2] = temp;
             return BuildRequest(DeviceHeating, room, CmdState, value);
@@ -242,7 +241,7 @@ namespace Homepad.Core
             }
             else if (fromOff && speed == VentilationSpeed.Low)
             {
-                value[0] = VentCmdOn;
+                value[0] = DeviceOn;
                 value[2] = VentFanLow;
             }
             else
@@ -269,7 +268,7 @@ namespace Homepad.Core
                 return true;
             }
 
-            if (v0 == VentCmdOn || v0 == VentCmdSpeed)
+            if (v0 == DeviceOn || v0 == VentCmdSpeed)
             {
                 powered = true;
                 speed = FanSpeed(v2);
@@ -611,7 +610,7 @@ namespace Homepad.Core
                     ? frame.value[4]
                     : (frame.value.Length > 3 ? frame.value[3] : (byte)0);
 
-                string run = m0 == HeatRun ? "가동" : m0 == HeatStop ? "정지" : $"VALUE0(0x{m0:X2})";
+                string run = m0 == DeviceOn ? "가동" : m0 == HeatStop ? "정지" : $"VALUE0(0x{m0:X2})";
                 if (m1 == HeatAwayOn) run += ", 외출";
                 else if (m1 != HeatAwayOff) run += $", VALUE1(0x{m1:X2})";
 
@@ -626,7 +625,7 @@ namespace Homepad.Core
                 byte v0 = frame.value[0];
                 byte v2 = frame.value[2];
                 if (v0 == DeviceOff) return "OFF (정지)";
-                if (v0 == 0x11) return "ON (가동)";
+                if (v0 == DeviceOn) return "ON (가동)";
                 if (v0 == 0x88)
                 {
                     string speed = v2 switch
