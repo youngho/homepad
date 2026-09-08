@@ -648,7 +648,7 @@ namespace Homepad.Core
             {
                 if (light.roomCode != room) continue;
                 if (light.slot < 0 || light.slot >= bitmap.Length) continue;
-                bool isOn = bitmap[light.slot] != KocomProtocol.LightOff;
+                bool isOn = bitmap[light.slot] != KocomProtocol.DeviceOff;
                 if (light.isOn == isOn) continue;
                 light.isOn = isOn;
                 OnLightChanged?.Invoke(light);
@@ -662,7 +662,7 @@ namespace Homepad.Core
             if (light == null) return;
             if (!lightBitmapByRoom.TryGetValue(light.roomCode, out var bitmap)) return;
             if (light.slot < 0 || light.slot >= bitmap.Length) return;
-            light.isOn = bitmap[light.slot] != KocomProtocol.LightOff;
+            light.isOn = bitmap[light.slot] != KocomProtocol.DeviceOff;
         }
 
         private void ApplyHeatingFrame(KocomProtocol.Frame frame)

@@ -43,8 +43,9 @@ namespace Homepad.Core
         public const byte Room3 = 0x03;
 
         public const byte LightOn = 0xFF;
-        public const byte LightOff = 0x00;
-        // 난방 VALUE[0] (바이트 10). CMD가 아니다.
+        // VALUE 슬롯 Off (조명 스위치, 환기 VALUE[0]). 바이트 9의 CmdOff가 아니다.
+        public const byte DeviceOff = 0x00;
+        // 난방 VALUE[0] (바이트 10). 정지는 DeviceOff가 아니라 01.
         public const byte HeatRun = 0x11;
         public const byte HeatStop = 0x01;
         // 난방 VALUE[1] (바이트 11). 외출 플래그.
@@ -55,7 +56,6 @@ namespace Homepad.Core
         public const byte CmdOff = 0x02;
         public const byte CmdQuery = 0x3A;
 
-        public const byte VentCmdOff = 0x00;
         public const byte VentCmdOn = 0x11;
         public const byte VentCmdSpeed = 0x11;
         public const byte VentMarker = 0x03;
@@ -209,7 +209,7 @@ namespace Homepad.Core
                     var light = lightsInRoom[i];
                     if (light.slot >= 0 && light.slot < 8)
                     {
-                        value[light.slot] = light.isOn ? LightOn : LightOff;
+                        value[light.slot] = light.isOn ? LightOn : DeviceOff;
                     }
                 }
             }
@@ -237,7 +237,7 @@ namespace Homepad.Core
             value[1] = VentMarker;
             if (speed == VentilationSpeed.Off)
             {
-                value[0] = VentCmdOff;
+                value[0] = DeviceOff;
                 value[2] = VentFanOff;
             }
             else if (fromOff && speed == VentilationSpeed.Low)
@@ -262,7 +262,7 @@ namespace Homepad.Core
 
             byte v0 = frame.value[0];
             byte v2 = frame.value.Length > 2 ? frame.value[2] : (byte)0;
-            if (v0 == VentCmdOff)
+            if (v0 == DeviceOff)
             {
                 powered = false;
                 speed = VentilationSpeed.Off;
@@ -625,7 +625,7 @@ namespace Homepad.Core
                 if (frame.value == null || frame.value.Length < 3) return string.Empty;
                 byte v0 = frame.value[0];
                 byte v2 = frame.value[2];
-                if (v0 == 0x00) return "OFF (정지)";
+                if (v0 == DeviceOff) return "OFF (정지)";
                 if (v0 == 0x11) return "ON (가동)";
                 if (v0 == 0x88)
                 {
