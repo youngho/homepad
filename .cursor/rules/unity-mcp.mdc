@@ -5,12 +5,11 @@ alwaysApply: true
 
 # Unity MCP — 응답없음 방지
 
-Cursor MCP는 공식 릴레이만 쓴다 (`unity-mcp`, `--mcp --project-path /Users/yoho/github/homepad`).
-Coplay MCP와 동시에 붙이지 않는다.
+Cursor MCP는 Coplay `unityMCP`만 쓴다. Unity 내장 AI 릴레이(`~/.unity/relay`, `com.unity.ai.assistant`)는 쓰지 않는다.
 
-에디터가 컴파일·임포트·도메인 리로드 중이면 도구를 호출하지 않는다. 스크립트를 고친 뒤에는 Unity가 다시 놀 때까지 기다린 다음, 가벼운 `Unity_ManageEditor` GetState만 먼저 친다.
+에디터가 컴파일·임포트·도메인 리로드 중이면 도구를 호출하지 않는다. 스크립트를 고친 뒤에는 Unity가 다시 놀 때까지 기다린 다음, 가벼운 `manage_editor` / editor state만 먼저 친다.
 
-타임아웃(`-32001`)이 나면 같은 호출을 반복하지 않는다. 죽은 소켓을 두드리면 릴레이 CPU가 치솟고 Cursor가 응답없음이 된다. 유저에게 Unity가 놀 때 MCP를 재연결하라고 한 뒤, 씬 YAML·스크립트 편집으로 작업을 이어간다.
+타임아웃(`-32001`)이 나면 같은 호출을 반복하지 않는다. 죽은 소켓을 두드리면 MCP CPU가 치솟고 Cursor가 응답없음이 된다. 유저에게 Unity가 놀 때 MCP를 재연결하라고 한 뒤, 씬 YAML·스크립트 편집으로 작업을 이어간다.
 
 ## 금지 (에디터가 멈춘다)
 
