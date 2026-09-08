@@ -113,8 +113,8 @@ namespace Homepad.UI
         private bool linkUiApplying;
         private readonly Queue<byte[]> requestQueue = new Queue<byte[]>();
         private Coroutine requestBurstRoutine;
-        private ushort pendingAckDevice;
-        private ushort pendingAckRoom;
+        private byte pendingAckDevice;
+        private byte pendingAckRoom;
         private bool pendingAckSatisfied;
 
         private void Awake()

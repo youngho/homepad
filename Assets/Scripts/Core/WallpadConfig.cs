@@ -24,7 +24,7 @@ namespace Homepad.Core
         {
             public int id = 1;
             public string name = "조명";
-            public ushort roomCode = 0x0001;
+            public byte roomCode;
             public int slot;
         }
 
@@ -33,7 +33,7 @@ namespace Homepad.Core
         {
             public int roomId = 1;
             public string roomName = "거실";
-            public ushort roomCode = 0x0001;
+            public byte roomCode;
             public float currentTemp = 99f;
             public float targetTemp = 24f;
         }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Homepad.Core;
 
 namespace Homepad.Home
 {
@@ -173,17 +174,17 @@ namespace Homepad.Home
             return new HomeItemDef(catId, kind, rule.DefaultSurface, room, name, rule.SingletonPerRoom);
         }
 
-        public static ushort RoomCode(RoomHint hint)
+        public static byte RoomCode(RoomHint hint)
         {
             return hint switch
             {
-                RoomHint.Living => 0x0001,
-                RoomHint.Master => 0x0101,
-                RoomHint.Bedroom => 0x0201,
-                RoomHint.Bedroom2 => 0x0301,
-                RoomHint.Kitchen => 0x0401,
-                RoomHint.Entrance => 0x0001,
-                _ => 0x0001
+                RoomHint.Living => KocomProtocol.RoomLiving,
+                RoomHint.Master => KocomProtocol.Room1,
+                RoomHint.Bedroom => KocomProtocol.Room2,
+                RoomHint.Bedroom2 => KocomProtocol.Room3,
+                RoomHint.Kitchen => 0x04,
+                RoomHint.Entrance => KocomProtocol.RoomLiving,
+                _ => KocomProtocol.RoomLiving
             };
         }
 

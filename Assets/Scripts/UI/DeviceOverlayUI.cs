@@ -56,11 +56,11 @@ namespace Homepad.UI
                     break;
                 case HomeItemKind.Gas:
                     ShowRoot(gasRoot);
-                    WallpadManager.Instance?.QueryDeviceStatus(KocomProtocol.DeviceGas, 0x0001);
+                    WallpadManager.Instance?.QueryDeviceStatus(KocomProtocol.DeviceGas, KocomProtocol.RoomLiving);
                     break;
                 case HomeItemKind.Vent:
                     ShowRoot(ventRoot);
-                    WallpadManager.Instance?.QueryDeviceStatus(KocomProtocol.DeviceVentilation, 0x0001);
+                    WallpadManager.Instance?.QueryDeviceStatus(KocomProtocol.DeviceVentilation, KocomProtocol.RoomLiving);
                     break;
                 case HomeItemKind.Elevator:
                     ShowRoot(elevatorRoot);

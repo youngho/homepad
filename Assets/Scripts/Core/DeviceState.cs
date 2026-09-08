@@ -8,10 +8,10 @@ namespace Homepad.Core
         public int id;
         public string name;
         public bool isOn;
-        public ushort roomCode;
+        public byte roomCode;
         public int slot;
 
-        public LightState(int id, string name, bool isOn = false, ushort roomCode = 0x0001, int slot = 0)
+        public LightState(int id, string name, bool isOn = false, byte roomCode = 0, int slot = 0)
         {
             this.id = id;
             this.name = name;
@@ -30,9 +30,9 @@ namespace Homepad.Core
         public bool isAwayMode;
         public float currentTemp;
         public float targetTemp;
-        public ushort roomCode;
+        public byte roomCode;
 
-        public HeatingState(int roomId, string roomName, float currentTemp = 99f, float targetTemp = 24f, ushort roomCode = 0x0001)
+        public HeatingState(int roomId, string roomName, float currentTemp = 99f, float targetTemp = 24f, byte roomCode = 0)
         {
             this.roomId = roomId;
             this.roomName = roomName;

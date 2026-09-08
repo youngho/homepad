@@ -6,7 +6,7 @@
 - [iquix/kocom.py](https://github.com/iquix/kocom.py) — 바이트 9를 명령 1바이트로 읽음
 - [wknight1/hacs-kocom-wallpad](https://github.com/wknight1/hacs-kocom-wallpad) — `PacketFrame.command = raw[9]`
 
-프레임은 항상 **21바이트**다. 체크섬·TYPE·VALUE는 `Assets/Scripts/Core/KocomProtocol.cs`와 같다. 파서는 DEST/SRC/CMD를 1바이트로 읽고, 월패드 송신 `BuildRequest`는 16비트 장치·방 코드로 같은 바이트를 만든다.
+프레임은 항상 **21바이트**다. 체크섬·TYPE·VALUE는 `Assets/Scripts/Core/KocomProtocol.cs`와 같다. `TryParse`와 `BuildRequest` 모두 DEST/SRC/CMD를 **1바이트**로 읽고 쓴다. TYPE만 2바이트다.
 
 ```
 AA 55 | TYPE | 00 | DEST장치 DEST방 | SRC장치 SRC방 | CMD | VALUE[8] | CS | 0D 0D
@@ -110,7 +110,7 @@ hacs-kocom-wallpad에만 더 보이는 값. 이 집 캡처에는 아직 없다.
 
 장치가 방1에서 답하면 바이트 8이 `01`이 되어 8–9가 `01 00`이 된다. 이건 명령 `0100`이 아니라 **SRC 방=1 + CMD=state**다.
 
-`KocomProtocol.TryParse`는 DEST/SRC/CMD를 1바이트로 읽고, `ResolveRoom`은 장치 쪽 방 번호로 `0x0101` 같은 앱 방 코드를 만든다. 월패드 송신 `BuildRequest`는 예전처럼 16비트 장치·방·명령을 넣지만, 그 바이트가 버스 배치와 같다.
+`KocomProtocol.TryParse`는 DEST/SRC/CMD를 1바이트로 읽고, `ResolveRoom`은 장치 쪽 방 번호(바이트 6 또는 8)를 그대로 돌려준다. 월패드 송신 `BuildRequest`도 DEST 장치·방, SRC=월패드 방0, CMD를 1바이트씩 넣는다.
 
 ---
 
@@ -148,7 +148,7 @@ hacs-kocom-wallpad에만 더 보이는 값. 이 집 캡처에는 아직 없다.
 | `02 01` | DEST 방 `02` + SRC 장치 `01` | 방2 |
 | `03 01` | DEST 방 `03` + SRC 장치 `01` | 방3 |
 
-코드의 `IsKnownRoom(0x0001 / 0x0101 / …)`은 이 착시를 방 코드로 고정한 것이다. 실버스 기준 방은 **바이트 6 또는 8의 하위 번호**다.
+코드의 방 번호는 `00` 거실, `01` 방1, `02` 방2, `03` 방3이다. `0x0001` / `0x0101`은 16비트로 묶었을 때의 착시다.
 
 요청–응답에서 DEST/SRC가 뒤집힌다.
 
@@ -190,7 +190,8 @@ hacs-kocom-wallpad에만 더 보이는 값. 이 집 캡처에는 아직 없다.
 
 | 바이트 | VALUE 인덱스 | 역할 |
 |---|---|---|
-| 10–11 | `[0][1]` | 모드. `11 00` 가동, `01 00` 정지, `11 01` 외출 |
+| 10 | `[0]` | 가동 `11` / 정지 `01`. CMD가 아니다 |
+| 11 | `[1]` | 외출 아님 `00` / 외출 `01` |
 | 12 | `[2]` | 설정 온도 (°C, 정수) |
 | 13 | `[3]` | 로그용 현재 온도 (`DecodeFrame`이 읽음) |
 | 14 | `[4]` | 월패드 상태 적용 시 현재 온도 (`WallpadManager`가 읽음) |
@@ -280,7 +281,7 @@ AA 55 30 DC 00 01 00 0E 01 00 FF 00 00 00 00 00 00 00 1B 0D 0D
 
 | 파일 | 역할 |
 |---|---|
-| `Assets/Scripts/Core/KocomProtocol.cs` | 21바이트 파싱, 체크섬, `DecodeFrame` 한글 해석. DEST/SRC/CMD는 1바이트 |
+| `Assets/Scripts/Core/KocomProtocol.cs` | 21바이트 파싱·송신. DEST/SRC/CMD는 1바이트, TYPE만 2바이트 |
 | `Assets/Scripts/UI/KocomHexTestUI.cs` | `[RX 수신]` 녹색 로그 표시 |
 | `Assets/Scripts/Core/WallpadManager.cs` | 수신 프레임을 집 상태에 반영 |
 | `Docs/kocom-hex.md` | 장치별 HEX 프리셋 목록 |

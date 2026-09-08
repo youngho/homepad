@@ -32,7 +32,7 @@ namespace Homepad.UI
 
         private readonly List<LightSlot> activeSlots = new List<LightSlot>();
         private readonly List<GameObject> spawned = new List<GameObject>();
-        private ushort focusedRoomCode;
+        private byte focusedRoomCode;
         private bool templateResolved;
 
         public void Focus(int lightId)
@@ -95,7 +95,7 @@ namespace Homepad.UI
             }
         }
 
-        private void FocusRoomCode(ushort roomCode, string roomName)
+        private void FocusRoomCode(byte roomCode, string roomName)
         {
             ResolveTemplate();
             focusedRoomCode = roomCode;
@@ -135,7 +135,7 @@ namespace Homepad.UI
             if (slotTemplate != null) slotTemplate.SetActive(false);
         }
 
-        private List<LightState> CollectRoomLights(ushort roomCode)
+        private List<LightState> CollectRoomLights(byte roomCode)
         {
             var result = new List<LightState>();
             var manager = WallpadManager.Instance;
@@ -319,16 +319,10 @@ namespace Homepad.UI
             return HomeItemDef.RoomName(hint);
         }
 
-        private static string DescribeRoom(ushort roomCode)
+        private static string DescribeRoom(byte roomCode)
         {
-            return roomCode switch
-            {
-                0x0001 => "거실",
-                0x0101 => "방1",
-                0x0201 => "방2",
-                0x0301 => "방3",
-                _ => "조명"
-            };
+            string name = KocomProtocol.DescribeRoomIndex(roomCode);
+            return string.IsNullOrEmpty(name) ? "조명" : name;
         }
 
         private static LightState FindLight(IReadOnlyList<LightState> managerLights, int lightId)

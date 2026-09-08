@@ -49,17 +49,17 @@ namespace Homepad.Core
         private Coroutine pollRoutine;
         private Coroutine requestBurstRoutine;
         private readonly Queue<byte[]> requestQueue = new Queue<byte[]>();
-        private readonly Dictionary<ushort, byte[]> lightBitmapByRoom = new Dictionary<ushort, byte[]>();
-        private readonly Dictionary<ushort, HeatingState> heatingByRoom = new Dictionary<ushort, HeatingState>();
-        private ushort pendingQueryRoom;
-        private ushort pendingQueryDevice;
-        private ushort pendingAckDevice;
-        private ushort pendingAckRoom;
+        private readonly Dictionary<byte, byte[]> lightBitmapByRoom = new Dictionary<byte, byte[]>();
+        private readonly Dictionary<byte, HeatingState> heatingByRoom = new Dictionary<byte, HeatingState>();
+        private byte pendingQueryRoom;
+        private byte pendingQueryDevice;
+        private byte pendingAckDevice;
+        private byte pendingAckRoom;
         private bool pendingAckSatisfied;
 
-        private static readonly ushort[] DefaultRooms =
+        private static readonly byte[] DefaultRooms =
         {
-            0x0001, 0x0101, 0x0201, 0x0301
+            KocomProtocol.RoomLiving, KocomProtocol.Room1, KocomProtocol.Room2, KocomProtocol.Room3
         };
 
         private void Awake()
@@ -171,7 +171,7 @@ namespace Homepad.Core
 
         public void TurnOffAllLights()
         {
-            var rooms = new HashSet<ushort>();
+            var rooms = new HashSet<byte>();
             foreach (var light in lights)
             {
                 if (!light.isOn) continue;
@@ -180,7 +180,7 @@ namespace Homepad.Core
                 OnLightChanged?.Invoke(light);
             }
 
-            foreach (ushort room in rooms)
+            foreach (byte room in rooms)
             {
                 SendLightRoom(room);
             }
@@ -188,7 +188,7 @@ namespace Homepad.Core
             RaiseStateChanged();
         }
 
-        public void TurnOffRoomLights(ushort roomCode)
+        public void TurnOffRoomLights(byte roomCode)
         {
             bool any = false;
             foreach (var light in lights)
@@ -239,7 +239,7 @@ namespace Homepad.Core
             RaiseStateChanged();
         }
 
-        public void QueryDeviceStatus(ushort device, ushort room)
+        public void QueryDeviceStatus(byte device, byte room)
         {
             if (connector == null) return;
             if (!connector.IsConnected && !connector.UseSimulationMode) return;
@@ -330,7 +330,7 @@ namespace Homepad.Core
             RaiseStateChanged();
         }
 
-        public LightState AddLight(string name, ushort roomCode)
+        public LightState AddLight(string name, byte roomCode)
         {
             int slot = 0;
             int id = 1;
@@ -348,7 +348,7 @@ namespace Homepad.Core
             return light;
         }
 
-        public HeatingState AddHeatingRoom(string roomName, ushort roomCode)
+        public HeatingState AddHeatingRoom(string roomName, byte roomCode)
         {
             var existing = heatingRooms.Find(item => item.roomCode == roomCode);
             if (existing != null) return existing;
@@ -439,10 +439,10 @@ namespace Homepad.Core
             pollRoutine = null;
         }
 
-        private List<ushort> CollectRoomsToQuery()
+        private List<byte> CollectRoomsToQuery()
         {
-            var seen = new HashSet<ushort>();
-            var rooms = new List<ushort>();
+            var seen = new HashSet<byte>();
+            var rooms = new List<byte>();
             for (int i = 0; i < lights.Count; i++)
             {
                 AddRoom(seen, rooms, lights[i].roomCode);
@@ -464,13 +464,13 @@ namespace Homepad.Core
             return rooms;
         }
 
-        private static void AddRoom(HashSet<ushort> seen, List<ushort> rooms, ushort room)
+        private static void AddRoom(HashSet<byte> seen, List<byte> rooms, byte room)
         {
             if (!seen.Add(room)) return;
             rooms.Add(room);
         }
 
-        private IEnumerator QueryDevice(ushort device, ushort room)
+        private IEnumerator QueryDevice(byte device, byte room)
         {
             if (connector == null || !connector.IsConnected) yield break;
 
@@ -569,7 +569,7 @@ namespace Homepad.Core
             connector.SendPacket(KocomProtocol.CloneWithType(bc, KocomProtocol.TypeRetransmit2));
         }
 
-        private void NoteRequestAcked(ushort device, ushort room)
+        private void NoteRequestAcked(byte device, byte room)
         {
             if (pendingAckDevice == device && pendingAckRoom == room)
             {
@@ -587,8 +587,8 @@ namespace Homepad.Core
 
             if (!KocomProtocol.ShouldApplyState(frame)) return;
 
-            ushort device = frame.DeviceAddress;
-            ushort room = KocomProtocol.ResolveRoom(frame);
+            byte device = frame.DeviceAddress;
+            byte room = KocomProtocol.ResolveRoom(frame);
             if (pendingQueryDevice == device && pendingQueryRoom == room)
             {
                 pendingQueryRoom = 0;
@@ -638,7 +638,7 @@ namespace Homepad.Core
         {
             if (frame.value == null || frame.value.Length == 0) return;
 
-            ushort room = KocomProtocol.ResolveRoom(frame);
+            byte room = KocomProtocol.ResolveRoom(frame);
             var bitmap = new byte[8];
             int copy = Math.Min(8, frame.value.Length);
             Array.Copy(frame.value, bitmap, copy);
@@ -667,7 +667,7 @@ namespace Homepad.Core
 
         private void ApplyHeatingFrame(KocomProtocol.Frame frame)
         {
-            ushort roomCode = KocomProtocol.ResolveRoom(frame);
+            byte roomCode = KocomProtocol.ResolveRoom(frame);
             if (!heatingByRoom.TryGetValue(roomCode, out var cached))
             {
                 cached = new HeatingState(0, string.Empty, 99f, 24f, roomCode);
@@ -743,7 +743,7 @@ namespace Homepad.Core
 
         private void ApplyDoorLockFrame(KocomProtocol.Frame frame)
         {
-            if (frame.destDevice != KocomProtocol.DeviceByteDoorLock) return;
+            if (frame.destDevice != KocomProtocol.DeviceDoorLock) return;
 
             SetDoorOpen(true);
             connector?.SendPacket(KocomProtocol.CreateDoorLockAckPacket());
@@ -751,7 +751,7 @@ namespace Homepad.Core
             doorLockRoutine = StartCoroutine(AutoCloseDoor());
         }
 
-        private void SendLightRoom(ushort room)
+        private void SendLightRoom(byte room)
         {
             var roomLights = lights.FindAll(item => item.roomCode == room);
             SendRequest(KocomProtocol.CreateLightRoomPacket(room, roomLights));
@@ -786,11 +786,11 @@ namespace Homepad.Core
                 if (lightBitmapByRoom.Count > 0)
                 {
                     sb.AppendLine("조명 비트맵");
-                    var rooms = new List<ushort>(lightBitmapByRoom.Keys);
+                    var rooms = new List<byte>(lightBitmapByRoom.Keys);
                     rooms.Sort();
                     for (int r = 0; r < rooms.Count; r++)
                     {
-                        ushort roomCode = rooms[r];
+                        byte roomCode = rooms[r];
                         sb.Append("  ").Append(DescribeRoom(roomCode)).Append("  ");
                         var bitmap = lightBitmapByRoom[roomCode];
                         for (int i = 0; i < bitmap.Length; i++)
@@ -840,16 +840,10 @@ namespace Homepad.Core
             return sb.ToString();
         }
 
-        private static string DescribeRoom(ushort roomCode)
+        private static string DescribeRoom(byte roomCode)
         {
-            return roomCode switch
-            {
-                0x0001 => "거실",
-                0x0101 => "방1",
-                0x0201 => "방2",
-                0x0301 => "방3",
-                _ => $"방(0x{roomCode:X4})"
-            };
+            string name = KocomProtocol.DescribeRoomIndex(roomCode);
+            return string.IsNullOrEmpty(name) ? $"방({roomCode})" : name;
         }
 
         private static string DescribeVentilation(VentilationState state)
